@@ -1,4 +1,4 @@
-# sample_data
+# mGear Training Sample Data
 Free Sample data for mGear Training
 
 This repository contains the sample data from:
