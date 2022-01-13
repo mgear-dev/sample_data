@@ -1,0 +1,479 @@
+global proc SHAPESImportBlendShapeSetup(string $node)
+{
+	string $attr[] = `listAttr -m -k -lf $node`;
+	stringArrayRemoveAtIndex(0, $attr);
+	
+	if (!`optionVar -ex SHAPESRestoreShapeWeights`)
+		return;
+	
+	string $importPath = "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES";
+	
+	if (!`filetest -d $importPath`)
+		return;
+	
+	string $weightListString = `optionVar -q SHAPESRestoreShapeWeights`;
+	string $weightList[];
+	tokenize $weightListString "," $weightList;
+	string $targets[];
+	string $prefix = "";
+	for ($weight in $weightList)
+	{
+		string $items[];
+		tokenize $weight "_" $items;
+		$prefix = $items[0];
+		stringArrayRemoveAtIndex(0, $items);
+		$targets[size($targets)] = stringArrayToString($items, "_");
+	}
+	
+	for ($target in $targets)
+	{
+		for ($i = 0; $i < size($attr); $i ++)
+		{
+			if ($target == $attr[$i])
+			{
+				string $fileName = $importPath + "/" + $prefix + "_" + $target + ".bsw";
+				int $fileID = `fopen $fileName "r"`;
+				string $fileLine = `fgetline $fileID`;
+				
+				while (size($fileLine) > 0)
+				{
+					string $values[];
+					tokenize $fileLine " " $values;
+					float $val = $values[1];
+					setAttr ($node + ".it[0].itg[" + $i + "].tw[" + $values[0] + "]") $val;
+					$fileLine = `fgetline $fileID`;
+				}
+				fclose $fileID;
+			}
+		}
+	}
+	optionVar -rm SHAPESRestoreShapeWeights;
+}
+
+global proc string SHAPESImportGetLastCurve(int $init){
+	global string $SHAPESImportLastCurveUL;
+	global string $SHAPESImportLastCurveUA;
+	global string $SHAPESImportLastCurveUU;
+	string $lastCurveUL;
+	string $lastCurveUA;
+	string $lastCurveUU;
+	string $curves[] = `ls -type "animCurve"`;
+	for ($c in $curves){
+		if (`gmatch $c "animCurveUL*"`)
+			$lastCurveUL = $c;
+		else if (`gmatch $c "animCurveUA*"`)
+			$lastCurveUA = $c;
+		else if (`gmatch $c "animCurveUU*"`)
+			$lastCurveUU = $c;
+	}
+	if ($init == 1){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return "";
+	}
+	if ($lastCurveUL != $SHAPESImportLastCurveUL){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		return $lastCurveUL;
+	}
+	else if ($lastCurveUA != $SHAPESImportLastCurveUA){
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		return $lastCurveUA;
+	}
+	else if ($lastCurveUU != $SHAPESImportLastCurveUU){
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return $lastCurveUU;
+	}
+	else return "";
+}
+
+global proc string SHAPES_getNamespace(string $name){
+	if (catchQuiet(`select -r ("*:" + $name)`))
+		return "";
+	string $sel[] = `ls -sl`;
+	string $items[] = stringToStringArray($sel[0], ":");
+	stringArrayRemoveAtIndex(size($items) - 1, $items);
+	string $space = stringArrayToString($items, ":") + ":";
+	return $space;
+}
+
+global proc SHAPES_setEmptyTargetData(string $bsNode, int $id, int $pos){
+	string $comp[] = `eval("getAttr " + $bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict")`;
+	if (!size($comp)){
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict") -type componentList 1 vtx[0];
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ipt") -type pointArray 1 0 0 0 1;
+	}
+}
+
+SHAPESImportGetLastCurve 1;
+
+{
+string $geo = "shirt_geo";
+string $space = `SHAPES_getNamespace $geo`;
+
+// import shapes
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/shirt_geo_blendShape_shapes.ma";
+// import data node
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/shirt_geo_blendShape_shapes_data.ma";
+
+// create blendshape node
+deformer -type blendShape -foc -n shirt_geo_blendShape ($space + $geo);
+addAttr -ln SHAPESData -at "message" shirt_geo_blendShape;
+addAttr -ln SHAPESDrivenSetGroup -at "message" shirt_geo_blendShape;
+addAttr -ln SHAPESDrivenSet -at "message" -m -im 0 shirt_geo_blendShape;
+
+addAttr -at message -ln SHAPESSolver -m -im 0 shirt_geo_blendShape;
+string $allShapes[] = `listRelatives -s -f ($space + $geo)`;
+string $shapes[] = `listRelatives -s -ni -f ($space + $geo)`;
+string $intermediates[] = stringArrayRemove({$shapes[0]}, $allShapes);
+
+connectAttr -f shirt_geo_blendShape.SHAPESData shirt_geo_blendShape_data.SHAPESData;
+
+// add the target shapes
+blendShape -e -t ($space + $geo) 0 |arm_down_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 1 |arm_up_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 2 |arm_front_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 3 |shoulder_up_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 4 |shoulder_upExtreme_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 5 |shoulder_front_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 6 |shoulder_back_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 7 |shoulder_down_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 8 |shoulder_downExtreme_L 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 9 |arm_down_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 10 |arm_up_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 11 |arm_front_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 12 |shoulder_up_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 13 |shoulder_upExtreme_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 14 |shoulder_front_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 15 |shoulder_back_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 16 |shoulder_down_R 1 shirt_geo_blendShape;
+blendShape -e -t ($space + $geo) 17 |shoulder_downExtreme_R 1 shirt_geo_blendShape;
+
+// add the helper attributes
+addAttr -ln arm_L0_0_jnt_RBF -k 1 shirt_geo_blendShape;
+setAttr -l 1 shirt_geo_blendShape.arm_L0_0_jnt_RBF;
+addAttr -ln shoulder_L0_shoulder_jnt_RBF -k 1 shirt_geo_blendShape;
+setAttr -l 1 shirt_geo_blendShape.shoulder_L0_shoulder_jnt_RBF;
+addAttr -ln arm_R0_0_jnt_RBF -k 1 shirt_geo_blendShape;
+setAttr -l 1 shirt_geo_blendShape.arm_R0_0_jnt_RBF;
+addAttr -ln shoulder_R0_shoulder_jnt_RBF -k 1 shirt_geo_blendShape;
+setAttr -l 1 shirt_geo_blendShape.shoulder_R0_shoulder_jnt_RBF;
+
+delete |arm_down_L |arm_up_L |arm_front_L |shoulder_up_L |shoulder_upExtreme_L |shoulder_front_L |shoulder_back_L |shoulder_down_L |shoulder_downExtreme_L |arm_down_R |arm_up_R |arm_front_R |shoulder_up_R |shoulder_upExtreme_R |shoulder_front_R |shoulder_back_R |shoulder_down_R |shoulder_downExtreme_R;
+
+// check for empty channels
+SHAPES_setEmptyTargetData shirt_geo_blendShape 0 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 1 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 2 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 3 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 4 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 5 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 6 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 7 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 8 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 9 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 10 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 11 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 12 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 13 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 14 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 15 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 16 6000;
+SHAPES_setEmptyTargetData shirt_geo_blendShape 17 6000;
+
+// connect drivers to shapes
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] shirt_geo_blendShape_arm_L0_0_jnt_WD;
+setAttr -l 1 shirt_geo_blendShape_arm_L0_0_jnt_WD.v;
+parent shirt_geo_blendShape_arm_L0_0_jnt_WD shoulder_L0_shoulder_jnt;
+xform -m 0.999746104 0.0213238565 -0.007281530162 0 -0.02129102025 0.999762932 0.00455766152 0 0.007376990864 -0.004401473142 0.9999631028 0 1.290834075 0.5708107727 -0.009919586062 1 shirt_geo_blendShape_arm_L0_0_jnt_WD;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.type 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.kernel 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.twistAxis 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.scale 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.allowNegativeWeights 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.opposite 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.drawOrigin 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.drawDriver 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.drawTwist 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.drawPoses 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.poseLength 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.drawIndices 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.indexDistance 0.1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.iconSize 0.4477840641;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverIndex 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverColorR 0.1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverColorG 0.7;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverColorB 0;
+connectAttr -f arm_L0_0_jnt.worldMatrix[0] shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f arm_L0_fk0_ctl.message shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].controlNode;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 0.999746104 -0.006944236787 -0.02143607037 0 -0.02129102025 0.02032851671 -0.999566628 0 0.007376990864 0.9997692379 0.02017550549 0 1.547532775 14.00424365 -0.5088431118 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 1 0 0 0 0 0.01577516211 -0.9998755644 0 0 0.9998755644 0.01577516211 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 8 0 0 0 0 0 0 3 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" -0.007377347133 -0.9997688973 -0.02019224472 0 -0.02127415447 0.02034514303 -0.9995666489 0 0.9997464604 -0.006944577217 -0.02141933114 0 1.541471298 13.99826823 -0.5088356257 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 1 0 0 0 0 0.01577516211 -0.9998755644 0 0 0.9998755644 0.01577516211 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 8 0 0 0 0 90 0 3 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" -0.02167605062 0.9995492218 0.02077262748 0 -0.02127391502 0.02031166148 -0.9995673349 0 -0.9995386783 -0.02210858727 0.0208240486 0 1.54138524 14.01030133 -0.5085890744 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 1 0 0 0 0 0.01577516211 -0.9998755644 0 0 0.9998755644 0.01577516211 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 8 0 0 0 0 -91.66507424 0 3 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.02752283887 -0.0203714108 0.9994135775 0 0.9995939542 -0.006817377644 -0.02766676735 0 0.007376990864 0.9997692379 0.02017550549 0 1.541681347 14.00416284 -0.5026990239 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 1 0 0 0 0 0.01577516211 -0.9998755644 0 0 0.9998755644 0.01577516211 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 8 0 0 0 0 0 -89.64282639 3 1;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.driverList[0].pose[3].cpro 0;
+connectAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.output[1] shirt_geo_blendShape.arm_down_L;
+connectAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.output[2] shirt_geo_blendShape.arm_up_L;
+connectAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.output[3] shirt_geo_blendShape.arm_front_L;
+addAttr -at message -ln SHAPES_wd shirt_geo_blendShape_arm_L0_0_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage shirt_geo_blendShape_arm_L0_0_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" shirt_geo_blendShape_arm_L0_0_jnt_WDShape;
+setAttr shirt_geo_blendShape_arm_L0_0_jnt_WDShape.solverGroup -type "string" arm_L0_0_jnt_RBF;
+connectAttr -f -na shirt_geo_blendShape_arm_L0_0_jnt_WDShape.solverGroupMessage shirt_geo_blendShape.SHAPESSolver;
+}
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WD;
+setAttr -l 1 shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WD.v;
+parent shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WD spine_C0_4_jnt;
+xform -m 1 0 -0 0 -0 0.01577516211 -0.9998755644 0 0 0.9998755644 0.01577516211 0 0.2566986998 0.6817750499 0.1843145754 1 shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WD;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.type 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.kernel 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.twistAxis 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.scale 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.allowNegativeWeights 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.opposite 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.drawOrigin 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.drawDriver 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.drawTwist 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.drawPoses 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.poseLength 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.drawIndices 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.indexDistance 0.1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.iconSize 0.774500445;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverIndex 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverColorR 0.1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverColorG 0.7;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverColorB 0;
+connectAttr -f shoulder_L0_shoulder_jnt.worldMatrix[0] shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f shoulder_L0_ctl.message shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].controlNode;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 1 0 0 0 0 0.01577516211 -0.9998755644 0 0 0.9998755644 0.01577516211 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 10 1 0 0 0 0 0 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" 0.8109705494 0.5850141691 0.009229841875 0 0 0.01577516211 -0.9998755644 0 -0.5850869748 0.8108696358 0.01279319188 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 10 1 0 0 0 0 -35.80913462 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" 0.6621673248 0.7492627663 0.01182121258 0 0 0.01577516211 -0.9998755644 0 -0.7493560128 0.6620849276 0.01044579689 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 10 1 0 0 0 0 -48.53462449 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.5511653848 -0.01316273248 0.8342921917 0 0.8343960203 0.008694723294 -0.5510968002 0 0 0.9998755644 0.01577516211 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 10 1 0 0 0 0 0 -56.55299998 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" 0.8389747755 0.008584374853 -0.5441025957 0 -0.5441703098 0.01323496309 -0.8388703771 0 0 0.9998755644 0.01577516211 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 10 1 0 0 0 0 0 32.96798373 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[4].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[5].poseMatrix -type "matrix" 0.9012560662 -0.4332329438 -0.006835170458 0 0 0.01577516211 -0.9998755644 0 0.4332868601 0.9011439178 0.01421746055 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[5].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[5].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[5].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[5].cpv -type "doubleArray" 10 1 0 0 0 0 25.67633413 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[5].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[6].poseMatrix -type "matrix" 0.7710749264 -0.6366651875 -0.01004474647 0 -5.551115123e-17 0.01577516211 -0.9998755644 0 0.6367444212 0.7709789772 0.01216383196 0 0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[6].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[6].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[6].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[6].cpv -type "doubleArray" 10 1 0 0 0 0 39.54948533 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.driverList[0].pose[6].cpro 0;
+connectAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.output[1] shirt_geo_blendShape.shoulder_up_L;
+connectAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.output[2] shirt_geo_blendShape.shoulder_upExtreme_L;
+connectAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.output[3] shirt_geo_blendShape.shoulder_front_L;
+connectAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.output[4] shirt_geo_blendShape.shoulder_back_L;
+connectAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.output[5] shirt_geo_blendShape.shoulder_down_L;
+connectAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.output[6] shirt_geo_blendShape.shoulder_downExtreme_L;
+addAttr -at message -ln SHAPES_wd shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape;
+setAttr shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.solverGroup -type "string" shoulder_L0_shoulder_jnt_RBF;
+connectAttr -f -na shirt_geo_blendShape_shoulder_L0_shoulder_jnt_WDShape.solverGroupMessage shirt_geo_blendShape.SHAPESSolver;
+}
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] shirt_geo_blendShape_arm_R0_0_jnt_WD;
+setAttr -l 1 shirt_geo_blendShape_arm_R0_0_jnt_WD.v;
+parent shirt_geo_blendShape_arm_R0_0_jnt_WD shoulder_R0_shoulder_jnt;
+xform -m 0.999746104 0.0213238565 -0.007281530162 0 -0.02129102025 0.999762932 0.00455766152 0 0.007376990864 -0.004401473142 0.9999631028 0 -1.290833997 -0.570810771 0.009919585495 1 shirt_geo_blendShape_arm_R0_0_jnt_WD;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.type 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.kernel 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.twistAxis 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.scale 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.allowNegativeWeights 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.opposite 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.drawOrigin 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.drawDriver 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.drawTwist 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.drawPoses 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.poseLength 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.drawIndices 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.indexDistance 0.1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.iconSize 0.4477840641;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverIndex 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverColorR 0.1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverColorG 0.7;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverColorB 0;
+connectAttr -f arm_R0_0_jnt.worldMatrix[0] shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f arm_R0_fk0_ctl.message shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].controlNode;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 0.999746104 0.006944236787 0.02143607037 0 -0.02129102025 -0.02032851671 0.999566628 0 0.007376990864 -0.9997692379 -0.02017550549 0 -1.547532697 14.00424365 -0.5088431101 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 1 0 0 0 0 -0.01577516211 0.9998755644 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 8 0 0 0 0 0 0 3 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" -0.007377347133 0.9997688973 0.02019224472 0 -0.02127415447 -0.02034514303 0.9995666489 0 0.9997464604 0.006944577217 0.02141933114 0 -1.541471298 13.99826823 -0.5088356257 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 1 0 0 0 0 -0.01577516211 0.9998755644 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 8 0 0 0 0 90 0 3 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" -0.02167605062 -0.9995492218 -0.02077262748 0 -0.02127391502 -0.02031166148 0.9995673349 0 -0.9995386783 0.02210858727 -0.0208240486 0 -1.54138524 14.01030133 -0.5085890744 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 1 0 0 0 0 -0.01577516211 0.9998755644 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 8 0 0 0 0 -91.66507424 0 3 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.02752283887 0.0203714108 -0.9994135775 0 0.9995939542 0.006817377644 0.02766676735 0 0.007376990864 -0.9997692379 -0.02017550549 0 -1.541681347 14.00416284 -0.5026990239 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 1 0 0 0 0 -0.01577516211 0.9998755644 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 8 0 0 0 0 0 -89.64282639 3 1;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.driverList[0].pose[3].cpro 0;
+connectAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.output[1] shirt_geo_blendShape.arm_down_R;
+connectAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.output[2] shirt_geo_blendShape.arm_up_R;
+connectAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.output[3] shirt_geo_blendShape.arm_front_R;
+addAttr -at message -ln SHAPES_wd shirt_geo_blendShape_arm_R0_0_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage shirt_geo_blendShape_arm_R0_0_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" shirt_geo_blendShape_arm_R0_0_jnt_WDShape;
+setAttr shirt_geo_blendShape_arm_R0_0_jnt_WDShape.solverGroup -type "string" arm_R0_0_jnt_RBF;
+connectAttr -f -na shirt_geo_blendShape_arm_R0_0_jnt_WDShape.solverGroupMessage shirt_geo_blendShape.SHAPESSolver;
+}
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WD;
+setAttr -l 1 shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WD.v;
+parent shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WD spine_C0_4_jnt;
+xform -m 1 0 0 0 0 -0.01577516211 0.9998755644 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 0.6817750499 0.1843145754 1 shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WD;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.type 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.kernel 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.twistAxis 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.scale 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.allowNegativeWeights 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.opposite 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.drawOrigin 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.drawDriver 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.drawTwist 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.drawPoses 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.poseLength 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.drawIndices 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.indexDistance 0.1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.iconSize 0.774500445;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverIndex 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverColorR 0.1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverColorG 0.7;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverColorB 0;
+connectAttr -f shoulder_R0_shoulder_jnt.worldMatrix[0] shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f shoulder_R0_ctl.message shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].controlNode;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 1 0 0 0 0 -0.01577516211 0.9998755644 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 10 1 0 0 0 0 0 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" 0.8109705494 -0.5850141691 -0.009229841875 0 0 -0.01577516211 0.9998755644 0 -0.5850869748 -0.8108696358 -0.01279319188 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 10 1 0 0 0 0 -35.80913462 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" 0.6621673248 -0.7492627663 -0.01182121258 0 0 -0.01577516211 0.9998755644 0 -0.7493560128 -0.6620849276 -0.01044579689 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 10 1 0 0 0 0 -48.53462449 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.5511653848 0.01316273248 -0.8342921917 0 0.8343960203 -0.008694723294 0.5510968002 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 10 1 0 0 0 0 0 -56.55299998 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" 0.8389747755 -0.008584374853 0.5441025957 0 -0.5441703098 -0.01323496309 0.8388703771 0 0 -0.9998755644 -0.01577516211 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 10 1 0 0 0 0 0 32.96798373 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[4].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[5].poseMatrix -type "matrix" 0.9012560662 0.4332329438 0.006835170458 0 0 -0.01577516211 0.9998755644 0 0.4332868601 -0.9011439178 -0.01421746055 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[5].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[5].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[5].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[5].cpv -type "doubleArray" 10 1 0 0 0 0 25.67633413 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[5].cpro 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[6].poseMatrix -type "matrix" 0.7710749264 0.6366651875 0.01004474647 0 -5.551115123e-17 -0.01577516211 0.9998755644 0 0.6367444212 -0.7709789772 -0.01216383196 0 -0.2566986998 14.00515737 0.06205311475 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[6].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 13.32338232 -0.1222614606 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[6].poseMode 0;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[6].cpa -type "stringArray" 10 visibility translateX translateY translateZ rotateX rotateY rotateZ scaleX scaleY scaleZ;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[6].cpv -type "doubleArray" 10 1 0 0 0 0 39.54948533 0 1 1 1;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.driverList[0].pose[6].cpro 0;
+connectAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.output[1] shirt_geo_blendShape.shoulder_up_R;
+connectAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.output[2] shirt_geo_blendShape.shoulder_upExtreme_R;
+connectAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.output[3] shirt_geo_blendShape.shoulder_front_R;
+connectAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.output[4] shirt_geo_blendShape.shoulder_back_R;
+connectAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.output[5] shirt_geo_blendShape.shoulder_down_R;
+connectAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.output[6] shirt_geo_blendShape.shoulder_downExtreme_R;
+addAttr -at message -ln SHAPES_wd shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape;
+setAttr shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.solverGroup -type "string" shoulder_R0_shoulder_jnt_RBF;
+connectAttr -f -na shirt_geo_blendShape_shoulder_R0_shoulder_jnt_WDShape.solverGroupMessage shirt_geo_blendShape.SHAPESSolver;
+}
+
+// connect sequences
+
+// other connections
+
+// setup combos
+
+// apply the weight maps
+SHAPESImportBlendShapeSetup shirt_geo_blendShape;
+
+select -cl;
+}
+print "// Finished re-building the blend shape node. //\n";

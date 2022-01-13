@@ -1,0 +1,97 @@
+//Maya ASCII 2018ff09 scene
+//Name: head_geo_blendShape_shapes_data.ma
+//Last modified: Fri, Aug 23, 2019 06:50:41 AM
+//Codeset: 1252
+requires maya "2018ff09";
+requires "stereoCamera" "10.0";
+requires "stereoCamera" "10.0";
+currentUnit -l centimeter -a degree -t film;
+fileInfo "application" "maya";
+fileInfo "product" "Maya 2018";
+fileInfo "version" "2018";
+fileInfo "cutIdentifier" "201903222215-65bada0e52";
+fileInfo "osv" "Microsoft Windows 8 Home Premium Edition, 64-bit  (Build 9200)\n";
+createNode network -n "head_geo_blendShape_data";
+	rename -uid "DF6DB801-42DC-20F3-DE3A-54862B7F4D91";
+	addAttr -s false -ci true -sn "SHAPESData" -ln "SHAPESData" -at "message";
+	addAttr -ci true -m -sn "shape" -ln "shape" -at "compound" -nc 4;
+	addAttr -ci true -sn "shapeLabel" -ln "shapeLabel" -at "long" -p "shape";
+	addAttr -ci true -sn "shapeRange" -ln "shapeRange" -dt "Int32Array" -p "shape";
+	addAttr -ci true -sn "shapeTarget" -ln "shapeTarget" -dt "string" -p "shape";
+	addAttr -ci true -sn "shapeTimeRange" -ln "shapeTimeRange" -dt "floatArray" -p "shape";
+	addAttr -ci true -m -sn "helper" -ln "helper" -at "compound" -nc 4;
+	addAttr -ci true -sn "helperLabel" -ln "helperLabel" -at "long" -p "helper";
+	addAttr -ci true -sn "helperRange" -ln "helperRange" -dt "Int32Array" -p "helper";
+	addAttr -ci true -sn "helperTarget" -ln "helperTarget" -dt "string" -p "helper";
+	addAttr -ci true -sn "helperTimeRange" -ln "helperTimeRange" -dt "floatArray" -p "helper";
+	addAttr -ci true -m -sn "group" -ln "group" -at "compound" -nc 4;
+	addAttr -ci true -sn "groupLabel" -ln "groupLabel" -at "long" -p "group";
+	addAttr -ci true -sn "groupRange" -ln "groupRange" -dt "Int32Array" -p "group";
+	addAttr -ci true -sn "groupTarget" -ln "groupTarget" -dt "string" -p "group";
+	addAttr -ci true -sn "groupTimeRange" -ln "groupTimeRange" -dt "floatArray" -p "group";
+	addAttr -ci true -m -sn "drivenSet" -ln "drivenSet" -at "compound" -nc 4;
+	addAttr -ci true -sn "drivenSetLabel" -ln "drivenSetLabel" -at "long" -p "drivenSet";
+	addAttr -ci true -sn "drivenSetRange" -ln "drivenSetRange" -dt "Int32Array" -p "drivenSet";
+	addAttr -ci true -sn "drivenSetTarget" -ln "drivenSetTarget" -dt "string" -p "drivenSet";
+	addAttr -ci true -sn "drivenSetTimeRange" -ln "drivenSetTimeRange" -dt "floatArray" 
+		-p "drivenSet";
+	addAttr -ci true -h true -sn "order" -ln "order" -dt "string";
+	addAttr -ci true -h true -sn "parent" -ln "parent" -dt "string";
+	addAttr -ci true -h true -sn "expand" -ln "expand" -dt "string";
+	addAttr -ci true -h true -sn "alias" -ln "alias" -dt "string";
+	addAttr -ci true -h true -sn "driver" -ln "driver" -dt "string";
+	addAttr -ci true -h true -sn "driverGroup" -ln "driverGroup" -dt "string";
+	setAttr -s 5 ".shape";
+	setAttr ".shape[0].shapeLabel" -1;
+	setAttr ".shape[0].shapeTarget" -type "string" "neck_up";
+	setAttr ".shape[1].shapeLabel" -1;
+	setAttr ".shape[1].shapeTarget" -type "string" "neck_up_extreme";
+	setAttr ".shape[2].shapeLabel" -1;
+	setAttr ".shape[2].shapeTarget" -type "string" "neck_front";
+	setAttr ".shape[3].shapeLabel" -1;
+	setAttr ".shape[3].shapeTarget" -type "string" "neck_L";
+	setAttr ".shape[4].shapeLabel" -1;
+	setAttr ".shape[4].shapeTarget" -type "string" "neck_R";
+	setAttr ".group[0].groupLabel" 3;
+	setAttr ".group[0].groupTarget" -type "string" "neck_C0_2_jnt_RBF";
+	setAttr ".order" -type "string" "neck_C0_2_jnt_RBF,neck_up,neck_up_extreme,neck_front,neck_L,neck_R";
+	setAttr ".parent" -type "string" "none,neck_C0_2_jnt_RBF,neck_C0_2_jnt_RBF,neck_C0_2_jnt_RBF,neck_C0_2_jnt_RBF,neck_C0_2_jnt_RBF";
+	setAttr ".expand" -type "string" "1,1,1,1,1,1";
+	setAttr ".alias" -type "string" "neck_up weight[0] neck_up_extreme weight[1] neck_front weight[2] neck_L weight[3] neck_R weight[4]";
+	setAttr ".driver" -type "string" "neck_C0_2_jnt:none:1";
+select -ne :time1;
+	setAttr ".o" 1;
+	setAttr ".unw" 1;
+select -ne :hardwareRenderingGlobals;
+	setAttr ".otfna" -type "stringArray" 22 "NURBS Curves" "NURBS Surfaces" "Polygons" "Subdiv Surface" "Particles" "Particle Instance" "Fluids" "Strokes" "Image Planes" "UI" "Lights" "Cameras" "Locators" "Joints" "IK Handles" "Deformers" "Motion Trails" "Components" "Hair Systems" "Follicles" "Misc. UI" "Ornaments"  ;
+	setAttr ".otfva" -type "Int32Array" 22 0 1 1 1 1 1
+		 1 1 1 0 0 0 0 0 0 0 0 0
+		 0 0 0 0 ;
+	setAttr ".aoon" yes;
+	setAttr ".fprt" yes;
+select -ne :renderPartition;
+	setAttr -s 9 ".st";
+select -ne :renderGlobalsList1;
+select -ne :defaultShaderList1;
+	setAttr -s 11 ".s";
+select -ne :postProcessList1;
+	setAttr -s 2 ".p";
+select -ne :defaultRenderUtilityList1;
+	setAttr -s 32 ".u";
+select -ne :defaultRenderingList1;
+select -ne :initialShadingGroup;
+	setAttr -s 6 ".dsm";
+	setAttr ".ro" yes;
+select -ne :initialParticleSE;
+	setAttr ".ro" yes;
+select -ne :defaultResolution;
+	setAttr ".w" 1920;
+	setAttr ".h" 1080;
+	setAttr ".pa" 1;
+	setAttr ".dar" 1.7777780294418335;
+select -ne :hardwareRenderGlobals;
+	setAttr ".ctrs" 256;
+	setAttr ".btrs" 512;
+select -ne :ikSystem;
+	setAttr -s 2 ".sol";
+// End of head_geo_blendShape_shapes_data.ma

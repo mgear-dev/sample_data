@@ -1,0 +1,767 @@
+global proc SHAPESImportBlendShapeSetup(string $node)
+{
+   string $attr[] = `listAttr -m -k -lf $node`;
+   stringArrayRemoveAtIndex(0, $attr);
+   
+   if (!`optionVar -ex SHAPESRestoreShapeWeights`)
+       return;
+   
+   string $importPath = "D:/Dropbox/WIP/Training/Facial_rigging/build/data/mouth_blendshapes";
+   
+   if (!`filetest -d $importPath`)
+       return;
+   
+   string $weightListString = `optionVar -q SHAPESRestoreShapeWeights`;
+   string $weightList[];
+   tokenize $weightListString "," $weightList;
+   string $targets[];
+   string $prefix = "";
+   for ($weight in $weightList)
+   {
+       string $items[];
+       tokenize $weight "_" $items;
+       $prefix = $items[0];
+       stringArrayRemoveAtIndex(0, $items);
+       $targets[size($targets)] = stringArrayToString($items, "_");
+   }
+   
+   for ($target in $targets)
+   {
+       for ($i = 0; $i < size($attr); $i ++)
+       {
+           if ($target == $attr[$i])
+           {
+               string $fileName = $importPath + "/" + $prefix + "_" + $target + ".bsw";
+               int $fileID = `fopen $fileName "r"`;
+               string $fileLine = `fgetline $fileID`;
+               
+               while (size($fileLine) > 0)
+               {
+                   string $values[];
+                   tokenize $fileLine " " $values;
+                   float $val = $values[1];
+                   setAttr ($node + ".it[0].itg[" + $i + "].tw[" + $values[0] + "]") $val;
+                   $fileLine = `fgetline $fileID`;
+               }
+               fclose $fileID;
+           }
+       }
+   }
+   optionVar -rm SHAPESRestoreShapeWeights;
+}
+
+global proc string SHAPESImportGetLastCurve(int $init){
+   global string $SHAPESImportLastCurveUL;
+   global string $SHAPESImportLastCurveUA;
+   global string $SHAPESImportLastCurveUU;
+   string $lastCurveUL;
+   string $lastCurveUA;
+   string $lastCurveUU;
+   string $curves[] = `ls -type "animCurve"`;
+   for ($c in $curves){
+       if (`gmatch $c "animCurveUL*"`)
+           $lastCurveUL = $c;
+       else if (`gmatch $c "animCurveUA*"`)
+           $lastCurveUA = $c;
+       else if (`gmatch $c "animCurveUU*"`)
+           $lastCurveUU = $c;
+   }
+   if ($init == 1){
+       $SHAPESImportLastCurveUL = $lastCurveUL;
+       $SHAPESImportLastCurveUA = $lastCurveUA;
+       $SHAPESImportLastCurveUU = $lastCurveUU;
+       return "";
+   }
+   if ($lastCurveUL != $SHAPESImportLastCurveUL){
+       $SHAPESImportLastCurveUL = $lastCurveUL;
+       return $lastCurveUL;
+   }
+   else if ($lastCurveUA != $SHAPESImportLastCurveUA){
+       $SHAPESImportLastCurveUA = $lastCurveUA;
+       return $lastCurveUA;
+   }
+   else if ($lastCurveUU != $SHAPESImportLastCurveUU){
+       $SHAPESImportLastCurveUU = $lastCurveUU;
+       return $lastCurveUU;
+   }
+   else return "";
+}
+
+global proc string SHAPES_getNamespace(string $name){
+   if (catchQuiet(`select -r ("*:" + $name)`))
+       return "";
+   string $sel[] = `ls -sl`;
+   string $items[] = stringToStringArray($sel[0], ":");
+   stringArrayRemoveAtIndex(size($items) - 1, $items);
+   string $space = stringArrayToString($items, ":") + ":";
+   return $space;
+}
+
+global proc SHAPES_setEmptyTargetData(string $bsNode, int $id, int $pos){
+   string $comp[] = `eval("getAttr " + $bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict")`;
+   if (!size($comp)){
+       setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict") -type componentList 1 vtx[0];
+       setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ipt") -type pointArray 1 0 0 0 1;
+   }
+}
+
+SHAPESImportGetLastCurve 1;
+
+{
+string $geo = "head_geo_proportions_setup";
+string $space = `SHAPES_getNamespace $geo`;
+
+// import shapes
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/Facial_rigging/build/data/mouth_blendshapes/head_geo_proportions_setup_blendShape_shapes.ma";
+// import data node
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/Facial_rigging/build/data/mouth_blendshapes/head_geo_proportions_setup_blendShape_shapes_data.ma";
+
+// create blendshape node
+deformer -type blendShape -foc -n head_geo_proportions_setup_blendShape ($space + $geo);
+addAttr -longName SHAPESVersion -attributeType "long" head_geo_proportions_setup_blendShape;
+setAttr -lock 1 head_geo_proportions_setup_blendShape.SHAPESVersion 50702;
+addAttr -ln SHAPESData -at "message" head_geo_proportions_setup_blendShape;
+addAttr -ln SHAPESDrivenSetGroup -at "message" head_geo_proportions_setup_blendShape;
+addAttr -ln SHAPESDrivenSet -at "message" -m -im 0 head_geo_proportions_setup_blendShape;
+
+addAttr -at message -ln SHAPESSolver -m -im 0 head_geo_proportions_setup_blendShape;
+string $allShapes[] = `listRelatives -s -f ($space + $geo)`;
+string $shapes[] = `listRelatives -s -ni -f ($space + $geo)`;
+string $intermediates[] = stringArrayRemove({$shapes[0]}, $allShapes);
+
+connectAttr -f head_geo_proportions_setup_blendShape.SHAPESData head_geo_proportions_setup_blendShape_data.SHAPESData;
+
+// add the target shapes
+blendShape -e -t ($space + $geo) 0 |mouth_wide 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 1 |L_mouth_wide 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 2 |R_mouth_wide 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 3 |mouth_narrow 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 4 |L_mouth_narrow 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 5 |R_mouth_narrow 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 6 |mouth_smile 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 7 |L_mouth_smile 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 8 |R_mouth_smile 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 9 |mouth_sad 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 10 |L_mouth_sad 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 11 |R_mouth_sad 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 12 |mouth_wide_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 13 |L_mouth_wide_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 14 |R_mouth_wide_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 15 |mouth_narrow_sad_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 16 |L_mouth_narrow_sad_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 17 |R_mouth_narrow_sad_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 18 |mouth_open 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 19 |mouth_open_neck 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 20 |mouth_open_wide_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 21 |L_mouth_open_wide_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 22 |R_mouth_open_wide_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 23 |mouth_open_narrow_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 24 |L_mouth_open_narrow_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 25 |R_mouth_open_narrow_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 26 |mouth_open_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 27 |L_mouth_open_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 28 |R_mouth_open_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 29 |mouth_open_sad_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 30 |L_mouth_open_sad_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 31 |R_mouth_open_sad_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 32 |mouth_open_wide_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 33 |L_mouth_open_wide_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 34 |R_mouth_open_wide_smile_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 35 |mouth_open_wide_extreme_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 36 |L_mouth_open_wide_extreme_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 37 |R_mouth_open_wide_extreme_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 38 |mouth_open_neck_extreme_COMBO 1 head_geo_proportions_setup_blendShape;
+blendShape -e -t ($space + $geo) 39 |mouth_puker 1 head_geo_proportions_setup_blendShape;
+
+// add the helper attributes
+
+delete |mouth_wide |L_mouth_wide |R_mouth_wide |mouth_narrow |L_mouth_narrow |R_mouth_narrow |mouth_smile |L_mouth_smile |R_mouth_smile |mouth_sad |L_mouth_sad |R_mouth_sad |mouth_wide_smile_COMBO |L_mouth_wide_smile_COMBO |R_mouth_wide_smile_COMBO |mouth_narrow_sad_COMBO |L_mouth_narrow_sad_COMBO |R_mouth_narrow_sad_COMBO |mouth_open |mouth_open_neck |mouth_open_wide_COMBO |L_mouth_open_wide_COMBO |R_mouth_open_wide_COMBO |mouth_open_narrow_COMBO |L_mouth_open_narrow_COMBO |R_mouth_open_narrow_COMBO |mouth_open_smile_COMBO |L_mouth_open_smile_COMBO |R_mouth_open_smile_COMBO |mouth_open_sad_COMBO |L_mouth_open_sad_COMBO |R_mouth_open_sad_COMBO |mouth_open_wide_smile_COMBO |L_mouth_open_wide_smile_COMBO |R_mouth_open_wide_smile_COMBO |mouth_open_wide_extreme_COMBO |L_mouth_open_wide_extreme_COMBO |R_mouth_open_wide_extreme_COMBO |mouth_open_neck_extreme_COMBO |mouth_puker;
+
+// check for empty channels
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 0 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 1 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 2 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 3 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 4 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 5 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 6 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 7 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 8 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 9 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 10 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 11 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 12 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 13 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 14 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 15 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 16 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 17 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 18 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 19 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 20 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 21 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 22 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 23 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 24 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 25 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 26 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 27 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 28 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 29 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 30 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 31 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 32 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 33 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 34 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 35 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 36 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 37 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 38 6000;
+SHAPES_setEmptyTargetData head_geo_proportions_setup_blendShape 39 6000;
+
+// connect drivers to shapes
+{
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_L0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_wide;
+setDrivenKeyframe -dv 0.5 -v 1 -cd mouthCorner_L0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_wide;
+string $tempCurve = "head_geo_proportions_setup_blendShape_L_mouth_wide_WD";
+rename head_geo_proportions_setup_blendShape_L_mouth_wide $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_L_mouth_wide_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_R0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_wide;
+setDrivenKeyframe -dv 0.5 -v 1 -cd mouthCorner_R0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_wide;
+string $tempCurve = "head_geo_proportions_setup_blendShape_R_mouth_wide_WD";
+rename head_geo_proportions_setup_blendShape_R_mouth_wide $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_R_mouth_wide_WD;
+{
+setDrivenKeyframe -dv -0.25 -v 1 -cd mouthCorner_L0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_narrow;
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_L0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_narrow;
+string $tempCurve = "head_geo_proportions_setup_blendShape_L_mouth_narrow_WD";
+rename head_geo_proportions_setup_blendShape_L_mouth_narrow $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_L_mouth_narrow_WD;
+{
+setDrivenKeyframe -dv -0.25 -v 1 -cd mouthCorner_R0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_narrow;
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_R0_ctl.translateX -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_narrow;
+string $tempCurve = "head_geo_proportions_setup_blendShape_R_mouth_narrow_WD";
+rename head_geo_proportions_setup_blendShape_R_mouth_narrow $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_R_mouth_narrow_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_L0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_smile;
+setDrivenKeyframe -dv 0.3000000119 -v 1 -cd mouthCorner_L0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_smile;
+string $tempCurve = "head_geo_proportions_setup_blendShape_L_mouth_smile_WD";
+rename head_geo_proportions_setup_blendShape_L_mouth_smile $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_L_mouth_smile_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_R0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_smile;
+setDrivenKeyframe -dv 0.3000000119 -v 1 -cd mouthCorner_R0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_smile;
+string $tempCurve = "head_geo_proportions_setup_blendShape_R_mouth_smile_WD";
+rename head_geo_proportions_setup_blendShape_R_mouth_smile $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_R_mouth_smile_WD;
+{
+setDrivenKeyframe -dv -0.3000000119 -v 1 -cd mouthCorner_L0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_sad;
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_L0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.L_mouth_sad;
+string $tempCurve = "head_geo_proportions_setup_blendShape_L_mouth_sad_WD";
+rename head_geo_proportions_setup_blendShape_L_mouth_sad $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_L_mouth_sad_WD;
+{
+setDrivenKeyframe -dv -0.3000000119 -v 1 -cd mouthCorner_R0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_sad;
+setDrivenKeyframe -dv 0 -v 0 -cd mouthCorner_R0_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.R_mouth_sad;
+string $tempCurve = "head_geo_proportions_setup_blendShape_R_mouth_sad_WD";
+rename head_geo_proportions_setup_blendShape_R_mouth_sad $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_R_mouth_sad_WD;
+{
+setDrivenKeyframe -dv -0.5 -v 1 -cd mouth_C0_jaw_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_open;
+setDrivenKeyframe -dv 0 -v 0 -cd mouth_C0_jaw_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_open;
+string $tempCurve = "head_geo_proportions_setup_blendShape_mouth_open_WD";
+rename head_geo_proportions_setup_blendShape_mouth_open $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_mouth_open_WD;
+{
+setDrivenKeyframe -dv -0.5 -v 1 -cd mouth_C0_jaw_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_open_neck;
+setDrivenKeyframe -dv 0 -v 0 -cd mouth_C0_jaw_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_open_neck;
+string $tempCurve = "head_geo_proportions_setup_blendShape_mouth_open_neck_WD";
+rename head_geo_proportions_setup_blendShape_mouth_open_neck $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_mouth_open_neck_WD;
+{
+setDrivenKeyframe -dv -0.79 -v 1 -cd mouth_C0_jaw_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_open_neck_extreme_COMBO;
+setDrivenKeyframe -dv -0.45 -v 0 -cd mouth_C0_jaw_ctl.translateY -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_open_neck_extreme_COMBO;
+string $tempCurve = "head_geo_proportions_setup_blendShape_mouth_open_neck_extreme_COMBO_WD";
+rename head_geo_proportions_setup_blendShape_mouth_open_neck_extreme_COMBO $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_mouth_open_neck_extreme_COMBO_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd mouthSlide_C0_ctl.translateZ -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_puker;
+setDrivenKeyframe -dv 0.25 -v 1 -cd mouthSlide_C0_ctl.translateZ -itt spline -ott spline head_geo_proportions_setup_blendShape.mouth_puker;
+string $tempCurve = "head_geo_proportions_setup_blendShape_mouth_puker_WD";
+rename head_geo_proportions_setup_blendShape_mouth_puker $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message head_geo_proportions_setup_blendShape_mouth_puker_WD;
+
+// connect sequences
+
+// other connections
+
+// setup combos
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_wide_smile_COMBO_combo -m -im 0 SHAPES_L_mouth_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_wide_smile_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_wide_smile_COMBO_combo SHAPES_L_mouth_wide_smile_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_wide SHAPES_L_mouth_wide_smile_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_wide_smile_COMBO_combo_mult1.SHAPES_L_mouth_wide_smile_COMBO_combo SHAPES_L_mouth_wide_smile_COMBO_combo_mult.SHAPES_L_mouth_wide_smile_COMBO_combo;
+setAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_wide_smile_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_wide_smile_COMBO_combo SHAPES_L_mouth_wide_smile_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_smile SHAPES_L_mouth_wide_smile_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_wide_smile_COMBO_combo_mult2.SHAPES_L_mouth_wide_smile_COMBO_combo SHAPES_L_mouth_wide_smile_COMBO_combo_mult.SHAPES_L_mouth_wide_smile_COMBO_combo;
+setAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult1.output SHAPES_L_mouth_wide_smile_COMBO_combo_mult2.input2;
+connectAttr SHAPES_L_mouth_wide_smile_COMBO_combo_mult2.output SHAPES_L_mouth_wide_smile_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_wide_smile_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_wide_smile_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_wide_smile_COMBO_combo -m -im 0 SHAPES_R_mouth_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_wide_smile_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_wide_smile_COMBO_combo SHAPES_R_mouth_wide_smile_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_wide SHAPES_R_mouth_wide_smile_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_wide_smile_COMBO_combo_mult1.SHAPES_R_mouth_wide_smile_COMBO_combo SHAPES_R_mouth_wide_smile_COMBO_combo_mult.SHAPES_R_mouth_wide_smile_COMBO_combo;
+setAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_wide_smile_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_wide_smile_COMBO_combo SHAPES_R_mouth_wide_smile_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_smile SHAPES_R_mouth_wide_smile_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_wide_smile_COMBO_combo_mult2.SHAPES_R_mouth_wide_smile_COMBO_combo SHAPES_R_mouth_wide_smile_COMBO_combo_mult.SHAPES_R_mouth_wide_smile_COMBO_combo;
+setAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult1.output SHAPES_R_mouth_wide_smile_COMBO_combo_mult2.input2;
+connectAttr SHAPES_R_mouth_wide_smile_COMBO_combo_mult2.output SHAPES_R_mouth_wide_smile_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_wide_smile_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_wide_smile_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_narrow_sad_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_narrow_sad_COMBO_combo -m -im 0 SHAPES_L_mouth_narrow_sad_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_narrow_sad_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_narrow_sad_COMBO_combo SHAPES_L_mouth_narrow_sad_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_narrow SHAPES_L_mouth_narrow_sad_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_narrow_sad_COMBO_combo_mult1.SHAPES_L_mouth_narrow_sad_COMBO_combo SHAPES_L_mouth_narrow_sad_COMBO_combo_mult.SHAPES_L_mouth_narrow_sad_COMBO_combo;
+setAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_narrow_sad_COMBO_combo SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_sad SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2.SHAPES_L_mouth_narrow_sad_COMBO_combo SHAPES_L_mouth_narrow_sad_COMBO_combo_mult.SHAPES_L_mouth_narrow_sad_COMBO_combo;
+setAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult1.output SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2.input2;
+connectAttr SHAPES_L_mouth_narrow_sad_COMBO_combo_mult2.output SHAPES_L_mouth_narrow_sad_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_narrow_sad_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_narrow_sad_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_narrow_sad_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_narrow_sad_COMBO_combo -m -im 0 SHAPES_R_mouth_narrow_sad_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_narrow_sad_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_narrow_sad_COMBO_combo SHAPES_R_mouth_narrow_sad_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_narrow SHAPES_R_mouth_narrow_sad_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_narrow_sad_COMBO_combo_mult1.SHAPES_R_mouth_narrow_sad_COMBO_combo SHAPES_R_mouth_narrow_sad_COMBO_combo_mult.SHAPES_R_mouth_narrow_sad_COMBO_combo;
+setAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_narrow_sad_COMBO_combo SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_sad SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2.SHAPES_R_mouth_narrow_sad_COMBO_combo SHAPES_R_mouth_narrow_sad_COMBO_combo_mult.SHAPES_R_mouth_narrow_sad_COMBO_combo;
+setAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult1.output SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2.input2;
+connectAttr SHAPES_R_mouth_narrow_sad_COMBO_combo_mult2.output SHAPES_R_mouth_narrow_sad_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_narrow_sad_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_narrow_sad_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_COMBO_combo -m -im 0 SHAPES_L_mouth_open_wide_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_COMBO_combo SHAPES_L_mouth_open_wide_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_wide SHAPES_L_mouth_open_wide_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_COMBO_combo_mult1.SHAPES_L_mouth_open_wide_COMBO_combo SHAPES_L_mouth_open_wide_COMBO_combo_mult.SHAPES_L_mouth_open_wide_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_COMBO_combo SHAPES_L_mouth_open_wide_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_L_mouth_open_wide_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_COMBO_combo_mult2.SHAPES_L_mouth_open_wide_COMBO_combo SHAPES_L_mouth_open_wide_COMBO_combo_mult.SHAPES_L_mouth_open_wide_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult1.output SHAPES_L_mouth_open_wide_COMBO_combo_mult2.input2;
+connectAttr SHAPES_L_mouth_open_wide_COMBO_combo_mult2.output SHAPES_L_mouth_open_wide_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_open_wide_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_open_wide_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_COMBO_combo -m -im 0 SHAPES_R_mouth_open_wide_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_COMBO_combo SHAPES_R_mouth_open_wide_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_wide SHAPES_R_mouth_open_wide_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_COMBO_combo_mult1.SHAPES_R_mouth_open_wide_COMBO_combo SHAPES_R_mouth_open_wide_COMBO_combo_mult.SHAPES_R_mouth_open_wide_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_COMBO_combo SHAPES_R_mouth_open_wide_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_R_mouth_open_wide_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_COMBO_combo_mult2.SHAPES_R_mouth_open_wide_COMBO_combo SHAPES_R_mouth_open_wide_COMBO_combo_mult.SHAPES_R_mouth_open_wide_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult1.output SHAPES_R_mouth_open_wide_COMBO_combo_mult2.input2;
+connectAttr SHAPES_R_mouth_open_wide_COMBO_combo_mult2.output SHAPES_R_mouth_open_wide_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_open_wide_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_open_wide_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_narrow_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_narrow_COMBO_combo -m -im 0 SHAPES_L_mouth_open_narrow_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_narrow_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_narrow_COMBO_combo SHAPES_L_mouth_open_narrow_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_narrow SHAPES_L_mouth_open_narrow_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_open_narrow_COMBO_combo_mult1.SHAPES_L_mouth_open_narrow_COMBO_combo SHAPES_L_mouth_open_narrow_COMBO_combo_mult.SHAPES_L_mouth_open_narrow_COMBO_combo;
+setAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_narrow_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_narrow_COMBO_combo SHAPES_L_mouth_open_narrow_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_L_mouth_open_narrow_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_open_narrow_COMBO_combo_mult2.SHAPES_L_mouth_open_narrow_COMBO_combo SHAPES_L_mouth_open_narrow_COMBO_combo_mult.SHAPES_L_mouth_open_narrow_COMBO_combo;
+setAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult1.output SHAPES_L_mouth_open_narrow_COMBO_combo_mult2.input2;
+connectAttr SHAPES_L_mouth_open_narrow_COMBO_combo_mult2.output SHAPES_L_mouth_open_narrow_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_open_narrow_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_open_narrow_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_narrow_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_narrow_COMBO_combo -m -im 0 SHAPES_R_mouth_open_narrow_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_narrow_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_narrow_COMBO_combo SHAPES_R_mouth_open_narrow_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_narrow SHAPES_R_mouth_open_narrow_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_open_narrow_COMBO_combo_mult1.SHAPES_R_mouth_open_narrow_COMBO_combo SHAPES_R_mouth_open_narrow_COMBO_combo_mult.SHAPES_R_mouth_open_narrow_COMBO_combo;
+setAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_narrow_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_narrow_COMBO_combo SHAPES_R_mouth_open_narrow_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_R_mouth_open_narrow_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_open_narrow_COMBO_combo_mult2.SHAPES_R_mouth_open_narrow_COMBO_combo SHAPES_R_mouth_open_narrow_COMBO_combo_mult.SHAPES_R_mouth_open_narrow_COMBO_combo;
+setAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult1.output SHAPES_R_mouth_open_narrow_COMBO_combo_mult2.input2;
+connectAttr SHAPES_R_mouth_open_narrow_COMBO_combo_mult2.output SHAPES_R_mouth_open_narrow_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_open_narrow_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_open_narrow_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_smile_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_smile_COMBO_combo -m -im 0 SHAPES_L_mouth_open_smile_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_smile_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_smile_COMBO_combo SHAPES_L_mouth_open_smile_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_smile SHAPES_L_mouth_open_smile_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_open_smile_COMBO_combo_mult1.SHAPES_L_mouth_open_smile_COMBO_combo SHAPES_L_mouth_open_smile_COMBO_combo_mult.SHAPES_L_mouth_open_smile_COMBO_combo;
+setAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_smile_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_smile_COMBO_combo SHAPES_L_mouth_open_smile_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_L_mouth_open_smile_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_open_smile_COMBO_combo_mult2.SHAPES_L_mouth_open_smile_COMBO_combo SHAPES_L_mouth_open_smile_COMBO_combo_mult.SHAPES_L_mouth_open_smile_COMBO_combo;
+setAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult1.output SHAPES_L_mouth_open_smile_COMBO_combo_mult2.input2;
+connectAttr SHAPES_L_mouth_open_smile_COMBO_combo_mult2.output SHAPES_L_mouth_open_smile_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_open_smile_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_open_smile_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_smile_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_smile_COMBO_combo -m -im 0 SHAPES_R_mouth_open_smile_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_smile_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_smile_COMBO_combo SHAPES_R_mouth_open_smile_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_smile SHAPES_R_mouth_open_smile_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_open_smile_COMBO_combo_mult1.SHAPES_R_mouth_open_smile_COMBO_combo SHAPES_R_mouth_open_smile_COMBO_combo_mult.SHAPES_R_mouth_open_smile_COMBO_combo;
+setAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_smile_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_smile_COMBO_combo SHAPES_R_mouth_open_smile_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_R_mouth_open_smile_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_open_smile_COMBO_combo_mult2.SHAPES_R_mouth_open_smile_COMBO_combo SHAPES_R_mouth_open_smile_COMBO_combo_mult.SHAPES_R_mouth_open_smile_COMBO_combo;
+setAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult1.output SHAPES_R_mouth_open_smile_COMBO_combo_mult2.input2;
+connectAttr SHAPES_R_mouth_open_smile_COMBO_combo_mult2.output SHAPES_R_mouth_open_smile_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_open_smile_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_open_smile_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_sad_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_sad_COMBO_combo -m -im 0 SHAPES_L_mouth_open_sad_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_sad_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_sad_COMBO_combo SHAPES_L_mouth_open_sad_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_sad SHAPES_L_mouth_open_sad_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_open_sad_COMBO_combo_mult1.SHAPES_L_mouth_open_sad_COMBO_combo SHAPES_L_mouth_open_sad_COMBO_combo_mult.SHAPES_L_mouth_open_sad_COMBO_combo;
+setAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_sad_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_sad_COMBO_combo SHAPES_L_mouth_open_sad_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_L_mouth_open_sad_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_open_sad_COMBO_combo_mult2.SHAPES_L_mouth_open_sad_COMBO_combo SHAPES_L_mouth_open_sad_COMBO_combo_mult.SHAPES_L_mouth_open_sad_COMBO_combo;
+setAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult1.output SHAPES_L_mouth_open_sad_COMBO_combo_mult2.input2;
+connectAttr SHAPES_L_mouth_open_sad_COMBO_combo_mult2.output SHAPES_L_mouth_open_sad_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_open_sad_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_open_sad_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_sad_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_sad_COMBO_combo -m -im 0 SHAPES_R_mouth_open_sad_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_sad_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_sad_COMBO_combo SHAPES_R_mouth_open_sad_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_sad SHAPES_R_mouth_open_sad_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_open_sad_COMBO_combo_mult1.SHAPES_R_mouth_open_sad_COMBO_combo SHAPES_R_mouth_open_sad_COMBO_combo_mult.SHAPES_R_mouth_open_sad_COMBO_combo;
+setAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_sad_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_sad_COMBO_combo SHAPES_R_mouth_open_sad_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_R_mouth_open_sad_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_open_sad_COMBO_combo_mult2.SHAPES_R_mouth_open_sad_COMBO_combo SHAPES_R_mouth_open_sad_COMBO_combo_mult.SHAPES_R_mouth_open_sad_COMBO_combo;
+setAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult1.output SHAPES_R_mouth_open_sad_COMBO_combo_mult2.input2;
+connectAttr SHAPES_R_mouth_open_sad_COMBO_combo_mult2.output SHAPES_R_mouth_open_sad_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_open_sad_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_open_sad_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_smile_COMBO_combo -m -im 0 SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_smile_COMBO_combo SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_wide SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult1.SHAPES_L_mouth_open_wide_smile_COMBO_combo SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult.SHAPES_L_mouth_open_wide_smile_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_smile_COMBO_combo SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_smile SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2.SHAPES_L_mouth_open_wide_smile_COMBO_combo SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult.SHAPES_L_mouth_open_wide_smile_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult1.output SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2.input2;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_smile_COMBO_combo SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3.SHAPES_L_mouth_open_wide_smile_COMBO_combo SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult.SHAPES_L_mouth_open_wide_smile_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3.input2 1;
+connectAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult2.output SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3.input2;
+connectAttr SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult3.output SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_open_wide_smile_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_open_wide_smile_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_smile_COMBO_combo -m -im 0 SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_smile_COMBO_combo SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_wide SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult1.SHAPES_R_mouth_open_wide_smile_COMBO_combo SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult.SHAPES_R_mouth_open_wide_smile_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_smile_COMBO_combo SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_smile SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2.SHAPES_R_mouth_open_wide_smile_COMBO_combo SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult.SHAPES_R_mouth_open_wide_smile_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult1.output SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2.input2;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_smile_COMBO_combo SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3.SHAPES_R_mouth_open_wide_smile_COMBO_combo SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult.SHAPES_R_mouth_open_wide_smile_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3.input2 1;
+connectAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult2.output SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3.input2;
+connectAttr SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult3.output SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_open_wide_smile_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_open_wide_smile_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_extreme_COMBO_combo -m -im 0 SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult1;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_extreme_COMBO_combo SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.L_mouth_wide SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult1.SHAPES_L_mouth_open_wide_extreme_COMBO_combo SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult.SHAPES_L_mouth_open_wide_extreme_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_extreme_COMBO_combo SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2.SHAPES_L_mouth_open_wide_extreme_COMBO_combo SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult.SHAPES_L_mouth_open_wide_extreme_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult1.output SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2.input2;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_L_mouth_open_wide_extreme_COMBO_combo SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open_neck_extreme_COMBO SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3.input1;
+connectAttr -f -na SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3.SHAPES_L_mouth_open_wide_extreme_COMBO_combo SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult.SHAPES_L_mouth_open_wide_extreme_COMBO_combo;
+setAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3.input2 1;
+connectAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult2.output SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3.input2;
+connectAttr SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult3.output SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_L_mouth_open_wide_extreme_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.L_mouth_open_wide_extreme_COMBO;
+
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_extreme_COMBO_combo -m -im 0 SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult1;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult1.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_extreme_COMBO_combo SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult1;
+connectAttr head_geo_proportions_setup_blendShape.R_mouth_wide SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult1.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult1.SHAPES_R_mouth_open_wide_extreme_COMBO_combo SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult.SHAPES_R_mouth_open_wide_extreme_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult1.input2 1;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_extreme_COMBO_combo SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2.SHAPES_R_mouth_open_wide_extreme_COMBO_combo SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult.SHAPES_R_mouth_open_wide_extreme_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2.input2 1;
+connectAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult1.output SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2.input2;
+createNode multDoubleLinear -name SHAPES_temp_multiply;
+rename SHAPES_temp_multiply SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3.isHistoricallyInteresting 0;
+addAttr -at message -ln SHAPES_R_mouth_open_wide_extreme_COMBO_combo SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3;
+connectAttr head_geo_proportions_setup_blendShape.mouth_open_neck_extreme_COMBO SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3.input1;
+connectAttr -f -na SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3.SHAPES_R_mouth_open_wide_extreme_COMBO_combo SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult.SHAPES_R_mouth_open_wide_extreme_COMBO_combo;
+setAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3.input2 1;
+connectAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult2.output SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3.input2;
+connectAttr SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult3.output SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult.input1;
+connectAttr -f SHAPES_R_mouth_open_wide_extreme_COMBO_combo_mult.output head_geo_proportions_setup_blendShape.R_mouth_open_wide_extreme_COMBO;
+
+
+// apply the weight maps
+SHAPESImportBlendShapeSetup head_geo_proportions_setup_blendShape;
+
+select -cl;
+}
+print "// Finished re-building the blend shape node. //\n";

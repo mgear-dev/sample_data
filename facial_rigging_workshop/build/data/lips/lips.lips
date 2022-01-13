@@ -1,0 +1,14 @@
+{
+    "control_name": "ctl", 
+    "do_skin": false, 
+    "edge_loop": "head_geo_lips_setupShape.e[3662],head_geo_lips_setupShape.e[3665],head_geo_lips_setupShape.e[3667],head_geo_lips_setupShape.e[3669],head_geo_lips_setupShape.e[3671],head_geo_lips_setupShape.e[3673],head_geo_lips_setupShape.e[3675],head_geo_lips_setupShape.e[3677],head_geo_lips_setupShape.e[3679],head_geo_lips_setupShape.e[3681],head_geo_lips_setupShape.e[3683],head_geo_lips_setupShape.e[3685],head_geo_lips_setupShape.e[3687],head_geo_lips_setupShape.e[3689],head_geo_lips_setupShape.e[3691],head_geo_lips_setupShape.e[3693],head_geo_lips_setupShape.e[3695],head_geo_lips_setupShape.e[3698],head_geo_lips_setupShape.e[4160],head_geo_lips_setupShape.e[4163],head_geo_lips_setupShape.e[4165],head_geo_lips_setupShape.e[4167],head_geo_lips_setupShape.e[4169],head_geo_lips_setupShape.e[4171],head_geo_lips_setupShape.e[4173],head_geo_lips_setupShape.e[4175],head_geo_lips_setupShape.e[4177],head_geo_lips_setupShape.e[4179],head_geo_lips_setupShape.e[4181],head_geo_lips_setupShape.e[4182],head_geo_lips_setupShape.e[4222],head_geo_lips_setupShape.e[4730],head_geo_lips_setupShape.e[4802],head_geo_lips_setupShape.e[5193],head_geo_lips_setupShape.e[5273],head_geo_lips_setupShape.e[5645],head_geo_lips_setupShape.e[5733],head_geo_lips_setupShape.e[6174],head_geo_lips_setupShape.e[6270],head_geo_lips_setupShape.e[6786],head_geo_lips_setupShape.e[6890],head_geo_lips_setupShape.e[7582],head_geo_lips_setupShape.e[7694],head_geo_lips_setupShape.e[8287],head_geo_lips_setupShape.e[8407],head_geo_lips_setupShape.e[8767],head_geo_lips_setupShape.e[8824],head_geo_lips_setupShape.e[9170]", 
+    "falloff_loops": 5, 
+    "head_joint": "static_jnt", 
+    "jaw_joint": "static_jnt", 
+    "low_vertex": "head_geo_lips_setupShape.vtx[4488]", 
+    "name_prefix": "lips", 
+    "parent_node": "lips_setup", 
+    "rigid_loops": 5, 
+    "thickness": 0.06, 
+    "up_vertex": "head_geo_lips_setupShape.vtx[1897]"
+}

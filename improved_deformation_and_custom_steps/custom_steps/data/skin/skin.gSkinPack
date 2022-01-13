@@ -1,0 +1,21 @@
+{
+    "packFiles": [
+        "head_geo.jSkin", 
+        "eyebrows_geo.jSkin", 
+        "eyelashes_geo.jSkin", 
+        "arms_geo.jSkin", 
+        "leg_geo.jSkin", 
+        "upperTeeth_geo.jSkin", 
+        "lowerTeeth_geo.jSkin", 
+        "tongue_geo.jSkin", 
+        "eye_R_geo.jSkin", 
+        "eye_L_geo.jSkin", 
+        "glasses.jSkin", 
+        "shirt_geo.jSkin", 
+        "belt_geo.jSkin", 
+        "shoes_geo.jSkin", 
+        "pants_geo.jSkin", 
+        "body_setup_geo.jSkin"
+    ], 
+    "rootPath": "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/skin"
+}

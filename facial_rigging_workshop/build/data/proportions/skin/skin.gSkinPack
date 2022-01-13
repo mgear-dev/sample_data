@@ -1,0 +1,13 @@
+{
+    "packFiles": [
+        "head_geo_proportions_setup.gSkin", 
+        "eye_L_geo_proportions_setup.gSkin", 
+        "eye_R_geo_proportions_setup.gSkin", 
+        "lacrimal_geo_proportions_setup.gSkin", 
+        "eyebrows_geo_proportions_setup.gSkin", 
+        "upperTeeth_geo_proportions_setup.gSkin", 
+        "lowerTeeth_geo_proportions_setup.gSkin", 
+        "tongue_geo_proportions_setup.gSkin"
+    ], 
+    "rootPath": "D:/Dropbox/WIP/Training/Facial_rigging/build/data/proportions/skin"
+}

@@ -1,0 +1,307 @@
+global proc SHAPESImportBlendShapeSetup(string $node)
+{
+	string $attr[] = `listAttr -m -k -lf $node`;
+	stringArrayRemoveAtIndex(0, $attr);
+	
+	if (!`optionVar -ex SHAPESRestoreShapeWeights`)
+		return;
+	
+	string $importPath = "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES";
+	
+	if (!`filetest -d $importPath`)
+		return;
+	
+	string $weightListString = `optionVar -q SHAPESRestoreShapeWeights`;
+	string $weightList[];
+	tokenize $weightListString "," $weightList;
+	string $targets[];
+	string $prefix = "";
+	for ($weight in $weightList)
+	{
+		string $items[];
+		tokenize $weight "_" $items;
+		$prefix = $items[0];
+		stringArrayRemoveAtIndex(0, $items);
+		$targets[size($targets)] = stringArrayToString($items, "_");
+	}
+	
+	for ($target in $targets)
+	{
+		for ($i = 0; $i < size($attr); $i ++)
+		{
+			if ($target == $attr[$i])
+			{
+				string $fileName = $importPath + "/" + $prefix + "_" + $target + ".bsw";
+				int $fileID = `fopen $fileName "r"`;
+				string $fileLine = `fgetline $fileID`;
+				
+				while (size($fileLine) > 0)
+				{
+					string $values[];
+					tokenize $fileLine " " $values;
+					float $val = $values[1];
+					setAttr ($node + ".it[0].itg[" + $i + "].tw[" + $values[0] + "]") $val;
+					$fileLine = `fgetline $fileID`;
+				}
+				fclose $fileID;
+			}
+		}
+	}
+	optionVar -rm SHAPESRestoreShapeWeights;
+}
+
+global proc string SHAPESImportGetLastCurve(int $init){
+	global string $SHAPESImportLastCurveUL;
+	global string $SHAPESImportLastCurveUA;
+	global string $SHAPESImportLastCurveUU;
+	string $lastCurveUL;
+	string $lastCurveUA;
+	string $lastCurveUU;
+	string $curves[] = `ls -type "animCurve"`;
+	for ($c in $curves){
+		if (`gmatch $c "animCurveUL*"`)
+			$lastCurveUL = $c;
+		else if (`gmatch $c "animCurveUA*"`)
+			$lastCurveUA = $c;
+		else if (`gmatch $c "animCurveUU*"`)
+			$lastCurveUU = $c;
+	}
+	if ($init == 1){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return "";
+	}
+	if ($lastCurveUL != $SHAPESImportLastCurveUL){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		return $lastCurveUL;
+	}
+	else if ($lastCurveUA != $SHAPESImportLastCurveUA){
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		return $lastCurveUA;
+	}
+	else if ($lastCurveUU != $SHAPESImportLastCurveUU){
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return $lastCurveUU;
+	}
+	else return "";
+}
+
+global proc string SHAPES_getNamespace(string $name){
+	if (catchQuiet(`select -r ("*:" + $name)`))
+		return "";
+	string $sel[] = `ls -sl`;
+	string $items[] = stringToStringArray($sel[0], ":");
+	stringArrayRemoveAtIndex(size($items) - 1, $items);
+	string $space = stringArrayToString($items, ":") + ":";
+	return $space;
+}
+
+global proc SHAPES_setEmptyTargetData(string $bsNode, int $id, int $pos){
+	string $comp[] = `eval("getAttr " + $bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict")`;
+	if (!size($comp)){
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict") -type componentList 1 vtx[0];
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ipt") -type pointArray 1 0 0 0 1;
+	}
+}
+
+SHAPESImportGetLastCurve 1;
+
+{
+string $geo = "leg_geo";
+string $space = `SHAPES_getNamespace $geo`;
+
+// import shapes
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/leg_geo_blendShape_shapes.ma";
+// import data node
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/leg_geo_blendShape_shapes_data.ma";
+
+// create blendshape node
+deformer -type blendShape -foc -n leg_geo_blendShape ($space + $geo);
+addAttr -ln SHAPESData -at "message" leg_geo_blendShape;
+addAttr -ln SHAPESDrivenSetGroup -at "message" leg_geo_blendShape;
+addAttr -ln SHAPESDrivenSet -at "message" -m -im 0 leg_geo_blendShape;
+
+addAttr -at message -ln SHAPESSolver -m -im 0 leg_geo_blendShape;
+string $allShapes[] = `listRelatives -s -f ($space + $geo)`;
+string $shapes[] = `listRelatives -s -ni -f ($space + $geo)`;
+string $intermediates[] = stringArrayRemove({$shapes[0]}, $allShapes);
+
+connectAttr -f leg_geo_blendShape.SHAPESData leg_geo_blendShape_data.SHAPESData;
+
+// add the target shapes
+blendShape -e -t ($space + $geo) 0 |foot_back_L 1 leg_geo_blendShape;
+blendShape -e -t ($space + $geo) 1 |foot_back_extreme_L 1 leg_geo_blendShape;
+blendShape -e -t ($space + $geo) 2 |foot_out_L 1 leg_geo_blendShape;
+blendShape -e -t ($space + $geo) 3 |foot_in_L 1 leg_geo_blendShape;
+blendShape -e -t ($space + $geo) 4 |foot_back_R 1 leg_geo_blendShape;
+blendShape -e -t ($space + $geo) 5 |foot_back_extreme_R 1 leg_geo_blendShape;
+blendShape -e -t ($space + $geo) 6 |foot_out_R 1 leg_geo_blendShape;
+blendShape -e -t ($space + $geo) 7 |foot_in_R 1 leg_geo_blendShape;
+
+// add the helper attributes
+addAttr -ln leg_L0_end_jnt_RBF -k 1 leg_geo_blendShape;
+setAttr -l 1 leg_geo_blendShape.leg_L0_end_jnt_RBF;
+addAttr -ln leg_R0_end_jnt_RBF -k 1 leg_geo_blendShape;
+setAttr -l 1 leg_geo_blendShape.leg_R0_end_jnt_RBF;
+
+delete |foot_back_L |foot_back_extreme_L |foot_out_L |foot_in_L |foot_back_R |foot_back_extreme_R |foot_out_R |foot_in_R;
+
+// check for empty channels
+SHAPES_setEmptyTargetData leg_geo_blendShape 0 6000;
+SHAPES_setEmptyTargetData leg_geo_blendShape 1 6000;
+SHAPES_setEmptyTargetData leg_geo_blendShape 2 6000;
+SHAPES_setEmptyTargetData leg_geo_blendShape 3 6000;
+SHAPES_setEmptyTargetData leg_geo_blendShape 4 6000;
+SHAPES_setEmptyTargetData leg_geo_blendShape 5 6000;
+SHAPES_setEmptyTargetData leg_geo_blendShape 6 6000;
+SHAPES_setEmptyTargetData leg_geo_blendShape 7 6000;
+
+// connect drivers to shapes
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] leg_geo_blendShape_leg_L0_end_jnt_WD;
+setAttr -l 1 leg_geo_blendShape_leg_L0_end_jnt_WD.v;
+parent leg_geo_blendShape_leg_L0_end_jnt_WD leg_L0_8_jnt;
+xform -m 0.9917506072 0.1030921062 0.0761757885 0 -0.1033943136 0.9946404453 2.356121313e-05 0 -0.07576509122 -0.00789951021 0.9970944031 0 0.07759423602 3.016234569e-05 2.229793538e-05 1 leg_geo_blendShape_leg_L0_end_jnt_WD;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.type 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.kernel 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.twistAxis 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.scale 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.allowNegativeWeights 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.opposite 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.drawOrigin 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.drawDriver 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.drawTwist 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.drawPoses 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.poseLength 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.drawIndices 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.indexDistance 0.1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.iconSize 0.1644822715;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverIndex 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverColorR 0.1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverColorG 0.7;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverColorB 0;
+connectAttr -f leg_L0_end_jnt.worldMatrix[0] leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f leg_L0_fk2_ctl.message leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].controlNode;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 2.900665819e-12 -1 -3.658878756e-13 0 0.1251647629 1.101121656e-16 0.9921359696 0 -0.9921359696 -2.923508657e-12 0.1251647629 0 1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 0.06222786618 -0.9917505438 -0.112064943 0 0.1323313621 -0.1030927156 0.9858297533 0 -0.9892502733 -0.07617578852 0.1248244607 0 1.255921425 0.8405353489 -0.8524063589 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 10 0 0 0 0 0 0 0 1 1 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" -0.04393504082 -0.5842712738 -0.8103683057 0 0.1925397825 -0.8008966596 0.5670035033 0 -0.9803051282 -0.1311168152 0.1476828914 0 1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 0.06215736026 -0.9914673587 -0.1145815835 0 0.1890050628 -0.1010332759 0.9767647431 0 -0.9800069126 -0.08236961741 0.1811123887 0 1.255933971 0.8404842351 -0.8519636174 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 10 0 0 0 0 0 -54.47924279 0 1 1 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" -0.06250818028 -0.38575524 -0.9204811906 0 0.2003383045 -0.908362654 0.3670719991 0 -0.9777306844 -0.1614626384 0.1340616473 0 1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 0.06213665268 -0.9914237279 -0.1149696835 0 0.2125362724 -0.09940639797 0.9720836903 0 -0.9751755582 -0.08483725461 0.2045367227 0 1.255937697 0.8404759887 -0.8518949154 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 10 0 0 0 0 0 -67.60939794 0 1 1 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.652193096 -0.7576811812 -0.02373590387 0 0.1579259887 0.1051808382 0.9818331698 0 -0.7414199536 -0.6440933309 0.1882557662 0 1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 0.06420329052 -0.9916092024 -0.1122012803 0 0.1822658128 -0.09889014447 0.9782637235 0 -0.9811509114 -0.08325820759 0.1743873846 0 1.255574024 0.8405096593 -0.8523825314 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 10 0 0 0 40.94349884 0 0 0 1 1 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" -0.8093592822 -0.5859115412 -0.04056128988 0 -0.005817691071 -0.061060948 0.9981170849 0 -0.5872850303 0.8080713004 0.0460115927 0 1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 0.05990778596 -0.991862514 -0.1123379298 0 -0.1131987788 -0.1185646116 0.9864727413 0 -0.9917646362 -0.04638088138 -0.1193805687 0 1.256330282 0.8405534245 -0.8523586025 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 10 0 0 0 -54.4130025 0 0 0 1 1 1;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.driverList[0].pose[4].cpro 0;
+connectAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.output[1] leg_geo_blendShape.foot_back_L;
+connectAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.output[2] leg_geo_blendShape.foot_back_extreme_L;
+connectAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.output[3] leg_geo_blendShape.foot_out_L;
+connectAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.output[4] leg_geo_blendShape.foot_in_L;
+addAttr -at message -ln SHAPES_wd leg_geo_blendShape_leg_L0_end_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage leg_geo_blendShape_leg_L0_end_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" leg_geo_blendShape_leg_L0_end_jnt_WDShape;
+setAttr leg_geo_blendShape_leg_L0_end_jnt_WDShape.solverGroup -type "string" leg_L0_end_jnt_RBF;
+connectAttr -f -na leg_geo_blendShape_leg_L0_end_jnt_WDShape.solverGroupMessage leg_geo_blendShape.SHAPESSolver;
+}
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] leg_geo_blendShape_leg_R0_end_jnt_WD;
+setAttr -l 1 leg_geo_blendShape_leg_R0_end_jnt_WD.v;
+parent leg_geo_blendShape_leg_R0_end_jnt_WD leg_R0_8_jnt;
+xform -m 0.9917506072 0.1030921065 0.07617578867 0 -0.1033943138 0.9946404452 2.35611958e-05 0 -0.07576509138 -0.007899510227 0.9970944031 0 -0.07759430829 -3.0162364e-05 -2.229794892e-05 1 leg_geo_blendShape_leg_R0_end_jnt_WD;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.type 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.kernel 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.twistAxis 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.scale 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.allowNegativeWeights 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.opposite 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.drawOrigin 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.drawDriver 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.drawTwist 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.drawPoses 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.poseLength 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.drawIndices 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.indexDistance 0.1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.iconSize 0.1644822715;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverIndex 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverColorR 0.1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverColorG 0.7;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverColorB 0;
+connectAttr -f leg_R0_end_jnt.worldMatrix[0] leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f leg_R0_fk2_ctl.message leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].controlNode;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 2.900235607e-12 1 3.659902242e-13 0 0.1251647629 -7.741288215e-17 -0.9921359696 0 -0.9921359696 2.923411513e-12 -0.1251647629 0 -1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 0.06222786632 0.9917505438 0.1120649432 0 0.1323313621 0.1030927159 -0.9858297533 0 -0.9892502733 0.07617578868 -0.1248244606 0 -1.255921421 0.8405354206 -0.8524063508 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 10 0 0 0 0 0 0 0 1 1 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" -0.04393504082 0.5842712738 0.8103683057 0 0.1925397825 0.8008966596 -0.5670035033 0 -0.9803051282 0.1311168152 -0.1476828914 0 -1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 0.06215736026 0.9914673587 0.1145815835 0 0.1890050628 0.1010332759 -0.9767647431 0 -0.9800069126 0.08236961741 -0.1811123887 0 -1.255933971 0.8404842351 -0.8519636174 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 10 0 0 0 0 0 -54.47924279 0 1 1 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" -0.06250818028 0.38575524 0.9204811906 0 0.2003383045 0.908362654 -0.3670719991 0 -0.9777306844 0.1614626384 -0.1340616473 0 -1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 0.06213665268 0.9914237279 0.1149696835 0 0.2125362724 0.09940639797 -0.9720836903 0 -0.9751755582 0.08483725461 -0.2045367227 0 -1.255937697 0.8404759887 -0.8518949154 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 10 0 0 0 0 0 -67.60939794 0 1 1 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.652193096 0.7576811812 0.02373590387 0 0.1579259887 -0.1051808382 -0.9818331698 0 -0.7414199536 0.6440933309 -0.1882557662 0 -1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 0.06420329052 0.9916092024 0.1122012803 0 0.1822658128 0.09889014447 -0.9782637235 0 -0.9811509114 0.08325820759 -0.1743873846 0 -1.255574024 0.8405096593 -0.8523825314 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 10 0 0 0 40.94349884 0 0 0 1 1 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" -0.8093592822 0.5859115412 0.04056128988 0 -0.005817691071 0.061060948 -0.9981170849 0 -0.5872850303 -0.8080713004 -0.0460115927 0 -1.260731882 0.7635764163 -0.8610694339 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 0.05990778596 0.991862514 0.1123379298 0 -0.1131987788 0.1185646116 -0.9864727413 0 -0.9917646362 0.04638088138 0.1193805687 0 -1.256330282 0.8405534245 -0.8523586025 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 10 0 0 0 -54.4130025 0 0 0 1 1 1;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.driverList[0].pose[4].cpro 0;
+connectAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.output[1] leg_geo_blendShape.foot_back_R;
+connectAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.output[2] leg_geo_blendShape.foot_back_extreme_R;
+connectAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.output[3] leg_geo_blendShape.foot_out_R;
+connectAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.output[4] leg_geo_blendShape.foot_in_R;
+addAttr -at message -ln SHAPES_wd leg_geo_blendShape_leg_R0_end_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage leg_geo_blendShape_leg_R0_end_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" leg_geo_blendShape_leg_R0_end_jnt_WDShape;
+setAttr leg_geo_blendShape_leg_R0_end_jnt_WDShape.solverGroup -type "string" leg_R0_end_jnt_RBF;
+connectAttr -f -na leg_geo_blendShape_leg_R0_end_jnt_WDShape.solverGroupMessage leg_geo_blendShape.SHAPESSolver;
+}
+
+// connect sequences
+
+// other connections
+
+// setup combos
+
+// apply the weight maps
+SHAPESImportBlendShapeSetup leg_geo_blendShape;
+
+select -cl;
+}
+print "// Finished re-building the blend shape node. //\n";

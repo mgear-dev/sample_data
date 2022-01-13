@@ -1,0 +1,5 @@
+string $wires = `displayPref -q -wsa`;
+if ($wires == "none")
+displayPref -wsa "full";
+else
+displayPref -wsa "none";

@@ -1,0 +1,359 @@
+global proc SHAPESImportBlendShapeSetup(string $node)
+{
+	string $attr[] = `listAttr -m -k -lf $node`;
+	stringArrayRemoveAtIndex(0, $attr);
+	
+	if (!`optionVar -ex SHAPESRestoreShapeWeights`)
+		return;
+	
+	string $importPath = "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES";
+	
+	if (!`filetest -d $importPath`)
+		return;
+	
+	string $weightListString = `optionVar -q SHAPESRestoreShapeWeights`;
+	string $weightList[];
+	tokenize $weightListString "," $weightList;
+	string $targets[];
+	string $prefix = "";
+	for ($weight in $weightList)
+	{
+		string $items[];
+		tokenize $weight "_" $items;
+		$prefix = $items[0];
+		stringArrayRemoveAtIndex(0, $items);
+		$targets[size($targets)] = stringArrayToString($items, "_");
+	}
+	
+	for ($target in $targets)
+	{
+		for ($i = 0; $i < size($attr); $i ++)
+		{
+			if ($target == $attr[$i])
+			{
+				string $fileName = $importPath + "/" + $prefix + "_" + $target + ".bsw";
+				int $fileID = `fopen $fileName "r"`;
+				string $fileLine = `fgetline $fileID`;
+				
+				while (size($fileLine) > 0)
+				{
+					string $values[];
+					tokenize $fileLine " " $values;
+					float $val = $values[1];
+					setAttr ($node + ".it[0].itg[" + $i + "].tw[" + $values[0] + "]") $val;
+					$fileLine = `fgetline $fileID`;
+				}
+				fclose $fileID;
+			}
+		}
+	}
+	optionVar -rm SHAPESRestoreShapeWeights;
+}
+
+global proc string SHAPESImportGetLastCurve(int $init){
+	global string $SHAPESImportLastCurveUL;
+	global string $SHAPESImportLastCurveUA;
+	global string $SHAPESImportLastCurveUU;
+	string $lastCurveUL;
+	string $lastCurveUA;
+	string $lastCurveUU;
+	string $curves[] = `ls -type "animCurve"`;
+	for ($c in $curves){
+		if (`gmatch $c "animCurveUL*"`)
+			$lastCurveUL = $c;
+		else if (`gmatch $c "animCurveUA*"`)
+			$lastCurveUA = $c;
+		else if (`gmatch $c "animCurveUU*"`)
+			$lastCurveUU = $c;
+	}
+	if ($init == 1){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return "";
+	}
+	if ($lastCurveUL != $SHAPESImportLastCurveUL){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		return $lastCurveUL;
+	}
+	else if ($lastCurveUA != $SHAPESImportLastCurveUA){
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		return $lastCurveUA;
+	}
+	else if ($lastCurveUU != $SHAPESImportLastCurveUU){
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return $lastCurveUU;
+	}
+	else return "";
+}
+
+global proc string SHAPES_getNamespace(string $name){
+	if (catchQuiet(`select -r ("*:" + $name)`))
+		return "";
+	string $sel[] = `ls -sl`;
+	string $items[] = stringToStringArray($sel[0], ":");
+	stringArrayRemoveAtIndex(size($items) - 1, $items);
+	string $space = stringArrayToString($items, ":") + ":";
+	return $space;
+}
+
+global proc SHAPES_setEmptyTargetData(string $bsNode, int $id, int $pos){
+	string $comp[] = `eval("getAttr " + $bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict")`;
+	if (!size($comp)){
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict") -type componentList 1 vtx[0];
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ipt") -type pointArray 1 0 0 0 1;
+	}
+}
+
+SHAPESImportGetLastCurve 1;
+
+{
+string $geo = "pants_geo";
+string $space = `SHAPES_getNamespace $geo`;
+
+// import shapes
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/pants_geo_blendShape_shapes.ma";
+// import data node
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/pants_geo_blendShape_shapes_data.ma";
+
+// create blendshape node
+deformer -type blendShape -foc -n pants_geo_blendShape ($space + $geo);
+addAttr -ln SHAPESData -at "message" pants_geo_blendShape;
+addAttr -ln SHAPESDrivenSetGroup -at "message" pants_geo_blendShape;
+addAttr -ln SHAPESDrivenSet -at "message" -m -im 0 pants_geo_blendShape;
+
+addAttr -at message -ln SHAPESSolver -m -im 0 pants_geo_blendShape;
+string $allShapes[] = `listRelatives -s -f ($space + $geo)`;
+string $shapes[] = `listRelatives -s -ni -f ($space + $geo)`;
+string $intermediates[] = stringArrayRemove({$shapes[0]}, $allShapes);
+
+connectAttr -f pants_geo_blendShape.SHAPESData pants_geo_blendShape_data.SHAPESData;
+
+// add the target shapes
+blendShape -e -t ($space + $geo) 0 |knee_90_L 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 1 |knee_90_R 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 2 |knee_150_L 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 3 |knee_150_R 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 4 |leg_up_90_L 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 5 |leg_up_45_L 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 6 |leg_out_90_L 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 7 |leg_out_mid_L 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 8 |leg_up_90_R 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 9 |leg_up_45_R 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 10 |leg_out_90_R 1 pants_geo_blendShape;
+blendShape -e -t ($space + $geo) 11 |leg_out_mid_R 1 pants_geo_blendShape;
+
+// add the helper attributes
+addAttr -ln leg_L0_0_jnt_RBF -k 1 pants_geo_blendShape;
+setAttr -l 1 pants_geo_blendShape.leg_L0_0_jnt_RBF;
+addAttr -ln leg_R0_0_jnt_RBF -k 1 pants_geo_blendShape;
+setAttr -l 1 pants_geo_blendShape.leg_R0_0_jnt_RBF;
+
+delete |knee_90_L |knee_90_R |knee_150_L |knee_150_R |leg_up_90_L |leg_up_45_L |leg_out_90_L |leg_out_mid_L |leg_up_90_R |leg_up_45_R |leg_out_90_R |leg_out_mid_R;
+
+// check for empty channels
+SHAPES_setEmptyTargetData pants_geo_blendShape 0 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 1 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 2 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 3 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 4 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 5 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 6 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 7 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 8 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 9 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 10 6000;
+SHAPES_setEmptyTargetData pants_geo_blendShape 11 6000;
+
+// connect drivers to shapes
+{
+setDrivenKeyframe -dv -44.88999939 -v 1 -cd leg_L0_4_jnt.rotateZ -itt spline -ott spline pants_geo_blendShape.knee_90_L;
+setDrivenKeyframe -dv 0 -v 0 -cd leg_L0_4_jnt.rotateZ -itt flat -ott flat pants_geo_blendShape.knee_90_L;
+string $tempCurve = "pants_geo_blendShape_knee_90_L_WD";
+rename pants_geo_blendShape_knee_90_L $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message pants_geo_blendShape_knee_90_L_WD;
+{
+setDrivenKeyframe -dv -44.88999939 -v 1 -cd leg_R0_4_jnt.rotateZ -itt spline -ott spline pants_geo_blendShape.knee_90_R;
+setDrivenKeyframe -dv 0 -v 0 -cd leg_R0_4_jnt.rotateZ -itt flat -ott flat pants_geo_blendShape.knee_90_R;
+string $tempCurve = "pants_geo_blendShape_knee_90_R_WD";
+rename pants_geo_blendShape_knee_90_R $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message pants_geo_blendShape_knee_90_R_WD;
+{
+setDrivenKeyframe -dv -74.84999847 -v 1 -cd leg_L0_4_jnt.rotateZ -itt spline -ott spline pants_geo_blendShape.knee_150_L;
+setDrivenKeyframe -dv -44 -v 0 -cd leg_L0_4_jnt.rotateZ -itt spline -ott spline pants_geo_blendShape.knee_150_L;
+string $tempCurve = "pants_geo_blendShape_knee_150_L_WD";
+rename pants_geo_blendShape_knee_150_L $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message pants_geo_blendShape_knee_150_L_WD;
+{
+setDrivenKeyframe -dv -74.84999847 -v 1 -cd leg_R0_4_jnt.rotateZ -itt spline -ott spline pants_geo_blendShape.knee_150_R;
+setDrivenKeyframe -dv -44 -v 0 -cd leg_R0_4_jnt.rotateZ -itt spline -ott spline pants_geo_blendShape.knee_150_R;
+string $tempCurve = "pants_geo_blendShape_knee_150_R_WD";
+rename pants_geo_blendShape_knee_150_R $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message pants_geo_blendShape_knee_150_R_WD;
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] pants_geo_blendShape_leg_L0_0_jnt_WD;
+setAttr -l 1 pants_geo_blendShape_leg_L0_0_jnt_WD.v;
+parent pants_geo_blendShape_leg_L0_0_jnt_WD spine_C0_0_jnt;
+xform -m 0.06746369675 -0.9949482865 -0.07434081564 0 0.1298482009 -0.06512122284 0.9893930822 0 -0.9892361166 -0.07640113603 0.1247989265 0 0.7444038035 -0.8492742343 -0.0006054859342 1 pants_geo_blendShape_leg_L0_0_jnt_WD;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.type 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.kernel 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.twistAxis 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.scale 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.allowNegativeWeights 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.opposite 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.drawOrigin 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.drawDriver 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.drawTwist 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.drawPoses 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.poseLength 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.drawIndices 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.indexDistance 0.1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.iconSize 0.8095853906;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverIndex 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverColorR 0.1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverColorG 0.7;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverColorB 0;
+connectAttr -f leg_L0_0_jnt.worldMatrix[0] pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f leg_L0_fk0_ctl.message pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].controlNode;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 0.06746377161 -0.994948324 -0.07434024528 0 0.129848162 -0.06512064927 0.989393125 0 -0.9892361166 -0.07640113603 0.1247989265 0 0.7444038042 8.654784485 -0.122866942 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 8 0 0 0 0 0 0 0 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" 0.1298481615 -0.06512064242 0.9893931255 0 -0.0674637725 0.9949483245 0.07434023847 0 -0.9892361166 -0.07640113603 0.1247989265 0 0.7449119078 8.662357672 -0.1142031283 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 8 0 0 0 0 0 90 0 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" 0.1396425646 -0.7477532852 0.6491263195 0 0.04372481907 0.6595664416 0.7503734065 0 -0.9892361166 -0.07640113603 0.1247989265 0 0.7449916804 8.656797819 -0.1169745074 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 8 0 0 0 0 0 45.1591051 0 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.989237615 0.07640037778 -0.1247875128 0 0.1298374886 -0.0651324301 0.9893937503 0 0.06746234233 -0.9949476111 -0.07435108299 0 0.7519113962 8.663510323 -0.123277821 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 8 0 0 0 0 90 0 0 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" 0.8581000872 -0.1958353713 0.4746711996 0 -0.3214171823 0.5160584299 0.7939613919 0 -0.400443798 -0.8338658191 0.3798849304 0 0.7508433177 8.661293037 -0.1183953959 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 8 0 0 0 23.49743392 50.77476146 69.88734641 0 1;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.driverList[0].pose[4].cpro 0;
+connectAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.output[1] pants_geo_blendShape.leg_up_90_L;
+connectAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.output[2] pants_geo_blendShape.leg_up_45_L;
+connectAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.output[3] pants_geo_blendShape.leg_out_90_L;
+connectAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.output[4] pants_geo_blendShape.leg_out_mid_L;
+addAttr -at message -ln SHAPES_wd pants_geo_blendShape_leg_L0_0_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage pants_geo_blendShape_leg_L0_0_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" pants_geo_blendShape_leg_L0_0_jnt_WDShape;
+setAttr pants_geo_blendShape_leg_L0_0_jnt_WDShape.solverGroup -type "string" leg_L0_0_jnt_RBF;
+connectAttr -f -na pants_geo_blendShape_leg_L0_0_jnt_WDShape.solverGroupMessage pants_geo_blendShape.SHAPESSolver;
+}
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] pants_geo_blendShape_leg_R0_0_jnt_WD;
+setAttr -l 1 pants_geo_blendShape_leg_R0_0_jnt_WD.v;
+parent pants_geo_blendShape_leg_R0_0_jnt_WD spine_C0_0_jnt;
+xform -m 0.06746369675 0.9949482865 0.07434081564 0 0.1298482009 0.06512122284 -0.9893930822 0 -0.9892361166 0.07640113603 -0.1247989265 0 -0.7444037964 -0.8492741296 -0.00060547811 1 pants_geo_blendShape_leg_R0_0_jnt_WD;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.type 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.kernel 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.twistAxis 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.scale 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.allowNegativeWeights 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.opposite 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.drawOrigin 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.drawDriver 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.drawTwist 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.drawPoses 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.poseLength 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.drawIndices 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.indexDistance 0.1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.iconSize 0.8095853906;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverIndex 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverColorR 0.1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverColorG 0.7;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverColorB 0;
+connectAttr -f leg_R0_0_jnt.worldMatrix[0] pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f leg_R0_fk0_ctl.message pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].controlNode;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 0.06746377161 0.994948324 0.07434024528 0 0.129848162 0.06512064927 -0.989393125 0 -0.9892361166 0.07640113603 -0.1247989265 0 -0.7444037971 8.65478459 -0.1228669341 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 8 0 0 0 0 0 0 0 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" 0.1298481615 0.06512064242 -0.9893931255 0 -0.0674637725 -0.9949483245 -0.07434023847 0 -0.9892361166 0.07640113603 -0.1247989265 0 -0.7449119078 8.662357672 -0.1142031283 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 8 0 0 0 0 0 90 0 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" 0.1396425646 0.7477532852 -0.6491263195 0 0.04372481907 -0.6595664416 -0.7503734065 0 -0.9892361166 0.07640113603 -0.1247989265 0 -0.7449916804 8.656797819 -0.1169745074 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 8 0 0 0 0 0 45.1591051 0 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.989237615 -0.07640037778 0.1247875128 0 0.1298374886 0.0651324301 -0.9893937503 0 0.06746234233 0.9949476111 0.07435108299 0 -0.7519113962 8.663510323 -0.123277821 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 8 0 0 0 0 90 0 0 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" 0.8581000872 0.1958353713 -0.4746711996 0 -0.3214171823 -0.5160584299 -0.7939613919 0 -0.400443798 0.8338658191 -0.3798849304 0 -0.7508433177 8.661293037 -0.1183953959 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 1 0 0 0 0 1 0 0 0 0 1 0 -6.765112808e-17 9.504058719 -0.1222614606 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 8 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 8 0 0 0 23.49743392 50.77476146 69.88734641 0 1;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.driverList[0].pose[4].cpro 0;
+connectAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.output[1] pants_geo_blendShape.leg_up_90_R;
+connectAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.output[2] pants_geo_blendShape.leg_up_45_R;
+connectAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.output[3] pants_geo_blendShape.leg_out_90_R;
+connectAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.output[4] pants_geo_blendShape.leg_out_mid_R;
+addAttr -at message -ln SHAPES_wd pants_geo_blendShape_leg_R0_0_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage pants_geo_blendShape_leg_R0_0_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" pants_geo_blendShape_leg_R0_0_jnt_WDShape;
+setAttr pants_geo_blendShape_leg_R0_0_jnt_WDShape.solverGroup -type "string" leg_R0_0_jnt_RBF;
+connectAttr -f -na pants_geo_blendShape_leg_R0_0_jnt_WDShape.solverGroupMessage pants_geo_blendShape.SHAPESSolver;
+}
+
+// connect sequences
+
+// other connections
+
+// setup combos
+
+// apply the weight maps
+SHAPESImportBlendShapeSetup pants_geo_blendShape;
+
+select -cl;
+}
+print "// Finished re-building the blend shape node. //\n";

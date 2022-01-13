@@ -1,0 +1,983 @@
+global proc SHAPESImportBlendShapeSetup(string $node)
+{
+	string $attr[] = `listAttr -m -k -lf $node`;
+	stringArrayRemoveAtIndex(0, $attr);
+	
+	if (!`optionVar -ex SHAPESRestoreShapeWeights`)
+		return;
+	
+	string $importPath = "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES";
+	
+	if (!`filetest -d $importPath`)
+		return;
+	
+	string $weightListString = `optionVar -q SHAPESRestoreShapeWeights`;
+	string $weightList[];
+	tokenize $weightListString "," $weightList;
+	string $targets[];
+	string $prefix = "";
+	for ($weight in $weightList)
+	{
+		string $items[];
+		tokenize $weight "_" $items;
+		$prefix = $items[0];
+		stringArrayRemoveAtIndex(0, $items);
+		$targets[size($targets)] = stringArrayToString($items, "_");
+	}
+	
+	for ($target in $targets)
+	{
+		for ($i = 0; $i < size($attr); $i ++)
+		{
+			if ($target == $attr[$i])
+			{
+				string $fileName = $importPath + "/" + $prefix + "_" + $target + ".bsw";
+				int $fileID = `fopen $fileName "r"`;
+				string $fileLine = `fgetline $fileID`;
+				
+				while (size($fileLine) > 0)
+				{
+					string $values[];
+					tokenize $fileLine " " $values;
+					float $val = $values[1];
+					setAttr ($node + ".it[0].itg[" + $i + "].tw[" + $values[0] + "]") $val;
+					$fileLine = `fgetline $fileID`;
+				}
+				fclose $fileID;
+			}
+		}
+	}
+	optionVar -rm SHAPESRestoreShapeWeights;
+}
+
+global proc string SHAPESImportGetLastCurve(int $init){
+	global string $SHAPESImportLastCurveUL;
+	global string $SHAPESImportLastCurveUA;
+	global string $SHAPESImportLastCurveUU;
+	string $lastCurveUL;
+	string $lastCurveUA;
+	string $lastCurveUU;
+	string $curves[] = `ls -type "animCurve"`;
+	for ($c in $curves){
+		if (`gmatch $c "animCurveUL*"`)
+			$lastCurveUL = $c;
+		else if (`gmatch $c "animCurveUA*"`)
+			$lastCurveUA = $c;
+		else if (`gmatch $c "animCurveUU*"`)
+			$lastCurveUU = $c;
+	}
+	if ($init == 1){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return "";
+	}
+	if ($lastCurveUL != $SHAPESImportLastCurveUL){
+		$SHAPESImportLastCurveUL = $lastCurveUL;
+		return $lastCurveUL;
+	}
+	else if ($lastCurveUA != $SHAPESImportLastCurveUA){
+		$SHAPESImportLastCurveUA = $lastCurveUA;
+		return $lastCurveUA;
+	}
+	else if ($lastCurveUU != $SHAPESImportLastCurveUU){
+		$SHAPESImportLastCurveUU = $lastCurveUU;
+		return $lastCurveUU;
+	}
+	else return "";
+}
+
+global proc string SHAPES_getNamespace(string $name){
+	if (catchQuiet(`select -r ("*:" + $name)`))
+		return "";
+	string $sel[] = `ls -sl`;
+	string $items[] = stringToStringArray($sel[0], ":");
+	stringArrayRemoveAtIndex(size($items) - 1, $items);
+	string $space = stringArrayToString($items, ":") + ":";
+	return $space;
+}
+
+global proc SHAPES_setEmptyTargetData(string $bsNode, int $id, int $pos){
+	string $comp[] = `eval("getAttr " + $bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict")`;
+	if (!size($comp)){
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ict") -type componentList 1 vtx[0];
+		setAttr ($bsNode + ".it[0].itg[" + $id + "].iti[" + $pos + "].ipt") -type pointArray 1 0 0 0 1;
+	}
+}
+
+SHAPESImportGetLastCurve 1;
+
+{
+string $geo = "arms_geo";
+string $space = `SHAPES_getNamespace $geo`;
+
+// import shapes
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/arms_geo_blendShape_shapes.ma";
+// import data node
+file -i -type "mayaAscii" -mnc 0 -pr "D:/Dropbox/WIP/Training/improved_deformation_and_custom_steps/env/mgear/custom_steps/data/SHAPES/arms_geo_blendShape_shapes_data.ma";
+
+// create blendshape node
+deformer -type blendShape -foc -n arms_geo_blendShape ($space + $geo);
+addAttr -ln SHAPESData -at "message" arms_geo_blendShape;
+addAttr -ln SHAPESDrivenSetGroup -at "message" arms_geo_blendShape;
+addAttr -ln SHAPESDrivenSet -at "message" -m -im 0 arms_geo_blendShape;
+
+addAttr -at message -ln SHAPESSolver -m -im 0 arms_geo_blendShape;
+string $allShapes[] = `listRelatives -s -f ($space + $geo)`;
+string $shapes[] = `listRelatives -s -ni -f ($space + $geo)`;
+string $intermediates[] = stringArrayRemove({$shapes[0]}, $allShapes);
+
+connectAttr -f arms_geo_blendShape.SHAPESData arms_geo_blendShape_data.SHAPESData;
+
+// add the target shapes
+blendShape -e -t ($space + $geo) 0 |elbow_90_L 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 1 |elbow_90_R 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 2 |elbow_150_L 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 3 |elbow_150_R 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 4 |hand_up_L 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 5 |hand_down_L 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 6 |hand_back_L 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 7 |hand_front_L 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 8 |hand_up_R 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 9 |hand_down_R 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 10 |hand_back_R 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 11 |hand_front_R 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 12 |finger_L0_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 13 |finger_R0_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 14 |finger_L0_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 15 |finger_R0_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 16 |finger_L0_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 17 |finger_R0_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 18 |finger_L0_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 19 |finger_R0_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 20 |finger_L1_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 21 |finger_R1_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 22 |finger_L1_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 23 |finger_R1_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 24 |finger_L1_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 25 |finger_R1_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 26 |finger_L1_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 27 |finger_R1_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 28 |finger_L2_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 29 |finger_R2_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 30 |finger_L2_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 31 |finger_R2_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 32 |finger_L2_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 33 |finger_R2_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 34 |finger_L2_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 35 |finger_R2_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 36 |finger_L3_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 37 |finger_R3_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 38 |finger_L3_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 39 |finger_R3_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 40 |finger_L3_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 41 |finger_R3_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 42 |finger_L3_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 43 |finger_R3_COMB 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 44 |thumb_L_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 45 |thumb_R_2 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 46 |thumb_L_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 47 |thumb_R_1 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 48 |thumb_L_0 1 arms_geo_blendShape;
+blendShape -e -t ($space + $geo) 49 |thumb_R_0 1 arms_geo_blendShape;
+
+// add the helper attributes
+addAttr -ln arm -k 1 arms_geo_blendShape;
+setAttr -l 1 arms_geo_blendShape.arm;
+addAttr -ln arm_L0_end_jnt_RBF -k 1 arms_geo_blendShape;
+setAttr -l 1 arms_geo_blendShape.arm_L0_end_jnt_RBF;
+addAttr -ln arm_R0_end_jnt_RBF -k 1 arms_geo_blendShape;
+setAttr -l 1 arms_geo_blendShape.arm_R0_end_jnt_RBF;
+
+delete |elbow_90_L |elbow_90_R |elbow_150_L |elbow_150_R |hand_up_L |hand_down_L |hand_back_L |hand_front_L |hand_up_R |hand_down_R |hand_back_R |hand_front_R |finger_L0_2 |finger_R0_2 |finger_L0_1 |finger_R0_1 |finger_L0_0 |finger_R0_0 |finger_L0_COMB |finger_R0_COMB |finger_L1_2 |finger_R1_2 |finger_L1_1 |finger_R1_1 |finger_L1_0 |finger_R1_0 |finger_L1_COMB |finger_R1_COMB |finger_L2_2 |finger_R2_2 |finger_L2_1 |finger_R2_1 |finger_L2_0 |finger_R2_0 |finger_L2_COMB |finger_R2_COMB |finger_L3_2 |finger_R3_2 |finger_L3_1 |finger_R3_1 |finger_L3_0 |finger_R3_0 |finger_L3_COMB |finger_R3_COMB |thumb_L_2 |thumb_R_2 |thumb_L_1 |thumb_R_1 |thumb_L_0 |thumb_R_0;
+
+// check for empty channels
+SHAPES_setEmptyTargetData arms_geo_blendShape 0 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 1 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 2 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 3 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 4 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 5 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 6 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 7 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 8 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 9 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 10 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 11 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 12 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 13 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 14 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 15 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 16 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 17 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 18 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 19 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 20 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 21 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 22 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 23 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 24 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 25 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 26 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 27 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 28 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 29 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 30 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 31 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 32 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 33 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 34 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 35 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 36 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 37 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 38 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 39 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 40 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 41 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 42 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 43 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 44 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 45 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 46 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 47 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 48 6000;
+SHAPES_setEmptyTargetData arms_geo_blendShape 49 6000;
+
+// connect drivers to shapes
+{
+setDrivenKeyframe -dv -90 -v 1 -cd arm_L0_readerB_loc.rotateY -itt spline -ott spline arms_geo_blendShape.elbow_90_L;
+setDrivenKeyframe -dv 0 -v 0 -cd arm_L0_readerB_loc.rotateY -itt flat -ott flat arms_geo_blendShape.elbow_90_L;
+string $tempCurve = "arms_geo_blendShape_elbow_90_L_WD";
+rename arms_geo_blendShape_elbow_90_L $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_elbow_90_L_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd arm_R0_readerB_loc.rotateY -itt flat -ott flat arms_geo_blendShape.elbow_90_R;
+setDrivenKeyframe -dv 90 -v 1 -cd arm_R0_readerB_loc.rotateY -itt spline -ott spline arms_geo_blendShape.elbow_90_R;
+string $tempCurve = "arms_geo_blendShape_elbow_90_R_WD";
+rename arms_geo_blendShape_elbow_90_R $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_elbow_90_R_WD;
+{
+setDrivenKeyframe -dv -150 -v 1 -cd arm_L0_readerB_loc.rotateY -itt spline -ott spline arms_geo_blendShape.elbow_150_L;
+setDrivenKeyframe -dv -90 -v 0 -cd arm_L0_readerB_loc.rotateY -itt spline -ott spline arms_geo_blendShape.elbow_150_L;
+string $tempCurve = "arms_geo_blendShape_elbow_150_L_WD";
+rename arms_geo_blendShape_elbow_150_L $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_elbow_150_L_WD;
+{
+setDrivenKeyframe -dv -150 -v 1 -cd arm_R0_readerB_loc.rotateY -itt spline -ott spline arms_geo_blendShape.elbow_150_R;
+setDrivenKeyframe -dv -90 -v 0 -cd arm_R0_readerB_loc.rotateY -itt spline -ott spline arms_geo_blendShape.elbow_150_R;
+string $tempCurve = "arms_geo_blendShape_elbow_150_R_WD";
+rename arms_geo_blendShape_elbow_150_R $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_elbow_150_R_WD;
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] arms_geo_blendShape_arm_L0_end_jnt_WD;
+setAttr -l 1 arms_geo_blendShape_arm_L0_end_jnt_WD.v;
+parent arms_geo_blendShape_arm_L0_end_jnt_WD arm_L0_10_jnt;
+xform -m 0.9999999999 1.573210462e-05 0 0 -1.573210462e-05 0.9999999999 0 0 0 0 1 0 0.06266830576 -1.073133526e-08 1.243449788e-14 1 arms_geo_blendShape_arm_L0_end_jnt_WD;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.type 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.kernel 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.twistAxis 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.scale 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.allowNegativeWeights 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.opposite 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.drawOrigin 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.drawDriver 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.drawTwist 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.drawPoses 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.poseLength 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.drawIndices 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.indexDistance 0.1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.iconSize 0.1488767846;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverIndex 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverColorR 0.1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverColorG 0.7;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverColorB 0;
+connectAttr -f arm_L0_end_jnt.worldMatrix[0] arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f arm_L0_fk2_ctl.message arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].controlNode;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 0.9997696347 -0.00778066705 0.02000346933 0 0.02015583218 0.02002329235 -0.9995963236 0 0.007376990864 0.9997692379 0.02017550549 0 7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 0.9997693175 -0.007780982058 0.02001919508 0 0.02017156066 0.02002316994 -0.9995960088 0 0.007376990864 0.9997692379 0.02017550549 0 7.620096822 13.95949465 -0.5117466666 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 10 0 0 0 0 0 0 1 1 1 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" 0.007376990864 0.9997692379 0.02017550549 0 0.02015583218 0.02002329235 -0.9995963236 0 -0.9997696347 0.00778066705 -0.02000346933 0 7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 0.9997896364 -0.004117318852 0.02009304753 0 0.02017161546 0.02002322735 -0.9995960065 0 0.003713327823 0.9997910372 0.02010206817 0 7.620096778 13.95897084 -0.5117571684 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 10 0 0 0 0 -90 0 1 1 1 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" -0.007376990864 -0.9997692379 -0.02017550549 0 0.02015583218 0.02002329235 -0.9995963236 0 0.9997696347 -0.00778066705 0.02000346933 0 7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 0.9997355711 -0.01144454296 0.01994518296 0 0.0201716146 0.02002311168 -0.9995960089 0 0.01104055485 0.9997340133 0.0202486719 0 7.620104508 13.96001841 -0.5117360282 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 10 0 0 0 0 90 0 1 1 1 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.8476089561 0.004453401828 -0.5306026995 0 -0.5305701061 0.02101519042 -0.8473805074 0 0.007376990864 0.9997692379 0.02017550549 0 7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 0.9998078072 -0.007740758905 0.01801191902 0 0.01816393627 0.02003875415 -0.999634193 0 0.007376990864 0.9997692379 0.02017550549 0 7.620092174 13.95948892 -0.5114606638 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 10 0 0 0 0 0 33.19991234 1 1 1 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" 0.7621099971 -0.0186835319 0.6471779338 0 0.6474055393 0.01060172873 -0.7620719592 0 0.007376990864 0.9997692379 0.02017550549 0 7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 0.9997198886 -0.007827361721 0.0223355483 0 0.02248831508 0.02000508497 -0.9995469335 0 0.007376990864 0.9997692379 0.02017550549 0 7.620104981 13.95950126 -0.5120767492 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 10 0 0 0 0 0 -39.19264569 1 1 1 1;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.driverList[0].pose[4].cpro 0;
+connectAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.output[1] arms_geo_blendShape.hand_up_L;
+connectAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.output[2] arms_geo_blendShape.hand_down_L;
+connectAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.output[3] arms_geo_blendShape.hand_back_L;
+connectAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.output[4] arms_geo_blendShape.hand_front_L;
+addAttr -at message -ln SHAPES_wd arms_geo_blendShape_arm_L0_end_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage arms_geo_blendShape_arm_L0_end_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" arms_geo_blendShape_arm_L0_end_jnt_WDShape;
+setAttr arms_geo_blendShape_arm_L0_end_jnt_WDShape.solverGroup -type "string" arm_L0_end_jnt_RBF;
+connectAttr -f -na arms_geo_blendShape_arm_L0_end_jnt_WDShape.solverGroupMessage arms_geo_blendShape.SHAPESSolver;
+}
+{
+string $wd = `createNode weightDriver`;
+string $transform[] = `listRelatives -p $wd`;
+rename $transform[0] arms_geo_blendShape_arm_R0_end_jnt_WD;
+setAttr -l 1 arms_geo_blendShape_arm_R0_end_jnt_WD.v;
+parent arms_geo_blendShape_arm_R0_end_jnt_WD arm_R0_10_jnt;
+xform -m 0.9999999999 1.573210427e-05 0 0 -1.573210427e-05 0.9999999999 0 0 0 0 1 0 -0.06266836412 1.073135392e-08 1.776356839e-15 1 arms_geo_blendShape_arm_R0_end_jnt_WD;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.type 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.kernel 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.twistAxis 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.scale 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.allowNegativeWeights 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.opposite 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.drawOrigin 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.drawDriver 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.drawTwist 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.drawPoses 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.poseLength 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.drawIndices 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.indexDistance 0.1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.iconSize 0.1488767846;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverIndex 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverColorR 0.1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverColorG 0.7;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverColorB 0;
+connectAttr -f arm_R0_end_jnt.worldMatrix[0] arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].driverInput;
+connectAttr -f arm_R0_fk2_ctl.message arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].controlNode;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[0].poseMatrix -type "matrix" 0.9997696347 0.00778066705 -0.02000346933 0 0.02015583218 -0.02002329235 0.9995963236 0 0.007376990864 -0.9997692379 -0.02017550549 0 -7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[0].poseParentMatrix -type "matrix" 0.9997693175 0.007780982058 -0.02001919508 0 0.02017156066 -0.02002316994 0.9995960088 0 0.007376990864 -0.9997692379 -0.02017550549 0 -7.620096763 13.95949465 -0.5117466678 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[0].poseMode 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[0].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[0].cpv -type "doubleArray" 10 0 0 0 0 0 0 1 1 1 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[0].cpro 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[1].poseMatrix -type "matrix" 0.007376990864 -0.9997692379 -0.02017550549 0 0.02015583218 -0.02002329235 0.9995963236 0 -0.9997696347 -0.00778066705 0.02000346933 0 -7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[1].poseParentMatrix -type "matrix" 0.9997896364 0.004117318852 -0.02009304753 0 0.02017161546 -0.02002322735 0.9995960065 0 0.003713327823 -0.9997910372 -0.02010206817 0 -7.620096778 13.95897084 -0.5117571684 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[1].poseMode 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[1].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[1].cpv -type "doubleArray" 10 0 0 0 0 -90 0 1 1 1 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[1].cpro 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[2].poseMatrix -type "matrix" -0.007376990864 0.9997692379 0.02017550549 0 0.02015583218 -0.02002329235 0.9995963236 0 0.9997696347 0.00778066705 -0.02000346933 0 -7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[2].poseParentMatrix -type "matrix" 0.9997355711 0.01144454296 -0.01994518296 0 0.0201716146 -0.02002311168 0.9995960089 0 0.01104055485 -0.9997340133 -0.0202486719 0 -7.620104508 13.96001841 -0.5117360282 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[2].poseMode 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[2].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[2].cpv -type "doubleArray" 10 0 0 0 0 90 0 1 1 1 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[2].cpro 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[3].poseMatrix -type "matrix" 0.8476089561 -0.004453401828 0.5306026995 0 -0.5305701061 -0.02101519042 0.8473805074 0 0.007376990864 -0.9997692379 -0.02017550549 0 -7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[3].poseParentMatrix -type "matrix" 0.9998078072 0.007740758905 -0.01801191902 0 0.01816393627 -0.02003875415 0.999634193 0 0.007376990864 -0.9997692379 -0.02017550549 0 -7.620092174 13.95948892 -0.5114606638 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[3].poseMode 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[3].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[3].cpv -type "doubleArray" 10 0 0 0 0 0 33.19991234 1 1 1 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[3].cpro 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[4].poseMatrix -type "matrix" 0.7621099971 0.0186835319 -0.6471779338 0 0.6474055393 -0.01060172873 0.7620719592 0 0.007376990864 -0.9997692379 -0.02017550549 0 -7.682750671 13.95900703 -0.5104920868 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[4].poseParentMatrix -type "matrix" 0.9997198886 0.007827361721 -0.0223355483 0 0.02248831508 -0.02000508497 0.9995469335 0 0.007376990864 -0.9997692379 -0.02017550549 0 -7.620104981 13.95950126 -0.5120767492 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[4].poseMode 0;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[4].cpa -type "stringArray" 10 translateX translateY translateZ rotateX rotateY rotateZ rotateOrder scaleX scaleY scaleZ;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[4].cpv -type "doubleArray" 10 0 0 0 0 0 -39.19264569 1 1 1 1;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.driverList[0].pose[4].cpro 0;
+connectAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.output[1] arms_geo_blendShape.hand_up_R;
+connectAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.output[2] arms_geo_blendShape.hand_down_R;
+connectAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.output[3] arms_geo_blendShape.hand_back_R;
+connectAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.output[4] arms_geo_blendShape.hand_front_R;
+addAttr -at message -ln SHAPES_wd arms_geo_blendShape_arm_R0_end_jnt_WDShape;
+addAttr -at message -ln solverGroupMessage arms_geo_blendShape_arm_R0_end_jnt_WDShape;
+addAttr -ln solverGroup -h 1 -dt "string" arms_geo_blendShape_arm_R0_end_jnt_WDShape;
+setAttr arms_geo_blendShape_arm_R0_end_jnt_WDShape.solverGroup -type "string" arm_R0_end_jnt_RBF;
+connectAttr -f -na arms_geo_blendShape_arm_R0_end_jnt_WDShape.solverGroupMessage arms_geo_blendShape.SHAPESSolver;
+}
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L0_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L0_2;
+string $tempCurve = "arms_geo_blendShape_finger_L0_2_WD";
+rename arms_geo_blendShape_finger_L0_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L0_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R0_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R0_2;
+string $tempCurve = "arms_geo_blendShape_finger_R0_2_WD";
+rename arms_geo_blendShape_finger_R0_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R0_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L0_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L0_1;
+string $tempCurve = "arms_geo_blendShape_finger_L0_1_WD";
+rename arms_geo_blendShape_finger_L0_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L0_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R0_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R0_1;
+string $tempCurve = "arms_geo_blendShape_finger_R0_1_WD";
+rename arms_geo_blendShape_finger_R0_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R0_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L0_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L0_0;
+string $tempCurve = "arms_geo_blendShape_finger_L0_0_WD";
+rename arms_geo_blendShape_finger_L0_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L0_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R0_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R0_0;
+string $tempCurve = "arms_geo_blendShape_finger_R0_0_WD";
+rename arms_geo_blendShape_finger_R0_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R0_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L1_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L1_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L1_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L1_2;
+string $tempCurve = "arms_geo_blendShape_finger_L1_2_WD";
+rename arms_geo_blendShape_finger_L1_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L1_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R1_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R1_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R1_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R1_2;
+string $tempCurve = "arms_geo_blendShape_finger_R1_2_WD";
+rename arms_geo_blendShape_finger_R1_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R1_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L1_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L1_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L1_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L1_1;
+string $tempCurve = "arms_geo_blendShape_finger_L1_1_WD";
+rename arms_geo_blendShape_finger_L1_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L1_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R1_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R1_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R1_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R1_1;
+string $tempCurve = "arms_geo_blendShape_finger_R1_1_WD";
+rename arms_geo_blendShape_finger_R1_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R1_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L1_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L1_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L1_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L1_0;
+string $tempCurve = "arms_geo_blendShape_finger_L1_0_WD";
+rename arms_geo_blendShape_finger_L1_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L1_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R1_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R1_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R1_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R1_0;
+string $tempCurve = "arms_geo_blendShape_finger_R1_0_WD";
+rename arms_geo_blendShape_finger_R1_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R1_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L2_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L2_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L2_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L2_2;
+string $tempCurve = "arms_geo_blendShape_finger_L2_2_WD";
+rename arms_geo_blendShape_finger_L2_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L2_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R2_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R2_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R2_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R2_2;
+string $tempCurve = "arms_geo_blendShape_finger_R2_2_WD";
+rename arms_geo_blendShape_finger_R2_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R2_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L2_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L2_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L2_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L2_1;
+string $tempCurve = "arms_geo_blendShape_finger_L2_1_WD";
+rename arms_geo_blendShape_finger_L2_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L2_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R2_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R2_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R2_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R2_1;
+string $tempCurve = "arms_geo_blendShape_finger_R2_1_WD";
+rename arms_geo_blendShape_finger_R2_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R2_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L2_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L2_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L2_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L2_0;
+string $tempCurve = "arms_geo_blendShape_finger_L2_0_WD";
+rename arms_geo_blendShape_finger_L2_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L2_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R2_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R2_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R2_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R2_0;
+string $tempCurve = "arms_geo_blendShape_finger_R2_0_WD";
+rename arms_geo_blendShape_finger_R2_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R2_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L3_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L3_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L3_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L3_2;
+string $tempCurve = "arms_geo_blendShape_finger_L3_2_WD";
+rename arms_geo_blendShape_finger_L3_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L3_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R3_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R3_2;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R3_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R3_2;
+string $tempCurve = "arms_geo_blendShape_finger_R3_2_WD";
+rename arms_geo_blendShape_finger_R3_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R3_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L3_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L3_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L3_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L3_1;
+string $tempCurve = "arms_geo_blendShape_finger_L3_1_WD";
+rename arms_geo_blendShape_finger_L3_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L3_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R3_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R3_1;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R3_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R3_1;
+string $tempCurve = "arms_geo_blendShape_finger_R3_1_WD";
+rename arms_geo_blendShape_finger_R3_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R3_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_L3_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L3_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_L3_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_L3_0;
+string $tempCurve = "arms_geo_blendShape_finger_L3_0_WD";
+rename arms_geo_blendShape_finger_L3_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_L3_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd finger_R3_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R3_0;
+setDrivenKeyframe -dv 90 -v 1 -cd finger_R3_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.finger_R3_0;
+string $tempCurve = "arms_geo_blendShape_finger_R3_0_WD";
+rename arms_geo_blendShape_finger_R3_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_finger_R3_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd thumb_L0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_L_2;
+setDrivenKeyframe -dv 90 -v 1 -cd thumb_L0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_L_2;
+string $tempCurve = "arms_geo_blendShape_thumb_L_2_WD";
+rename arms_geo_blendShape_thumb_L_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_thumb_L_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd thumb_R0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_R_2;
+setDrivenKeyframe -dv 90 -v 1 -cd thumb_R0_2_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_R_2;
+string $tempCurve = "arms_geo_blendShape_thumb_R_2_WD";
+rename arms_geo_blendShape_thumb_R_2 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_thumb_R_2_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd thumb_L0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_L_1;
+setDrivenKeyframe -dv 90 -v 1 -cd thumb_L0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_L_1;
+string $tempCurve = "arms_geo_blendShape_thumb_L_1_WD";
+rename arms_geo_blendShape_thumb_L_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_thumb_L_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd thumb_R0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_R_1;
+setDrivenKeyframe -dv 90 -v 1 -cd thumb_R0_1_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_R_1;
+string $tempCurve = "arms_geo_blendShape_thumb_R_1_WD";
+rename arms_geo_blendShape_thumb_R_1 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_thumb_R_1_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd thumb_L0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_L_0;
+setDrivenKeyframe -dv 90 -v 1 -cd thumb_L0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_L_0;
+string $tempCurve = "arms_geo_blendShape_thumb_L_0_WD";
+rename arms_geo_blendShape_thumb_L_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_thumb_L_0_WD;
+{
+setDrivenKeyframe -dv 0 -v 0 -cd thumb_R0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_R_0;
+setDrivenKeyframe -dv 90 -v 1 -cd thumb_R0_0_jnt.rotateZ -itt spline -ott spline arms_geo_blendShape.thumb_R_0;
+string $tempCurve = "arms_geo_blendShape_thumb_R_0_WD";
+rename arms_geo_blendShape_thumb_R_0 $tempCurve;
+select -r $tempCurve;
+setAttr ($tempCurve + ".preInfinity") 0;
+setAttr ($tempCurve + ".postInfinity") 0;
+}
+select -cl;
+addAttr -ln SHAPES_sdk -at message arms_geo_blendShape_thumb_R_0_WD;
+
+// connect sequences
+
+// other connections
+
+// setup combos
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L0_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_L0_COMB_combo -m -im 0 SHAPES_finger_L0_COMB_combo_mult;
+setAttr SHAPES_finger_L0_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L0_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_L0_COMB_combo SHAPES_finger_L0_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_L0_2 SHAPES_finger_L0_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_L0_COMB_combo_mult1.SHAPES_finger_L0_COMB_combo SHAPES_finger_L0_COMB_combo_mult.SHAPES_finger_L0_COMB_combo;
+setAttr SHAPES_finger_L0_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L0_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_L0_COMB_combo SHAPES_finger_L0_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_L0_1 SHAPES_finger_L0_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_L0_COMB_combo_mult2.SHAPES_finger_L0_COMB_combo SHAPES_finger_L0_COMB_combo_mult.SHAPES_finger_L0_COMB_combo;
+setAttr SHAPES_finger_L0_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_L0_COMB_combo_mult1.ox SHAPES_finger_L0_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L0_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_L0_COMB_combo SHAPES_finger_L0_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_L0_0 SHAPES_finger_L0_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_L0_COMB_combo_mult3.SHAPES_finger_L0_COMB_combo SHAPES_finger_L0_COMB_combo_mult.SHAPES_finger_L0_COMB_combo;
+setAttr SHAPES_finger_L0_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_L0_COMB_combo_mult2.ox SHAPES_finger_L0_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_L0_COMB_combo_mult3.ox SHAPES_finger_L0_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_L0_COMB_combo_mult.ox arms_geo_blendShape.finger_L0_COMB;
+
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R0_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_R0_COMB_combo -m -im 0 SHAPES_finger_R0_COMB_combo_mult;
+setAttr SHAPES_finger_R0_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R0_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_R0_COMB_combo SHAPES_finger_R0_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_R0_2 SHAPES_finger_R0_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_R0_COMB_combo_mult1.SHAPES_finger_R0_COMB_combo SHAPES_finger_R0_COMB_combo_mult.SHAPES_finger_R0_COMB_combo;
+setAttr SHAPES_finger_R0_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R0_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_R0_COMB_combo SHAPES_finger_R0_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_R0_1 SHAPES_finger_R0_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_R0_COMB_combo_mult2.SHAPES_finger_R0_COMB_combo SHAPES_finger_R0_COMB_combo_mult.SHAPES_finger_R0_COMB_combo;
+setAttr SHAPES_finger_R0_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_R0_COMB_combo_mult1.ox SHAPES_finger_R0_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R0_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_R0_COMB_combo SHAPES_finger_R0_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_R0_0 SHAPES_finger_R0_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_R0_COMB_combo_mult3.SHAPES_finger_R0_COMB_combo SHAPES_finger_R0_COMB_combo_mult.SHAPES_finger_R0_COMB_combo;
+setAttr SHAPES_finger_R0_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_R0_COMB_combo_mult2.ox SHAPES_finger_R0_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_R0_COMB_combo_mult3.ox SHAPES_finger_R0_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_R0_COMB_combo_mult.ox arms_geo_blendShape.finger_R0_COMB;
+
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L1_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_L1_COMB_combo -m -im 0 SHAPES_finger_L1_COMB_combo_mult;
+setAttr SHAPES_finger_L1_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L1_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_L1_COMB_combo SHAPES_finger_L1_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_L1_2 SHAPES_finger_L1_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_L1_COMB_combo_mult1.SHAPES_finger_L1_COMB_combo SHAPES_finger_L1_COMB_combo_mult.SHAPES_finger_L1_COMB_combo;
+setAttr SHAPES_finger_L1_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L1_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_L1_COMB_combo SHAPES_finger_L1_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_L1_1 SHAPES_finger_L1_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_L1_COMB_combo_mult2.SHAPES_finger_L1_COMB_combo SHAPES_finger_L1_COMB_combo_mult.SHAPES_finger_L1_COMB_combo;
+setAttr SHAPES_finger_L1_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_L1_COMB_combo_mult1.ox SHAPES_finger_L1_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L1_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_L1_COMB_combo SHAPES_finger_L1_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_L1_0 SHAPES_finger_L1_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_L1_COMB_combo_mult3.SHAPES_finger_L1_COMB_combo SHAPES_finger_L1_COMB_combo_mult.SHAPES_finger_L1_COMB_combo;
+setAttr SHAPES_finger_L1_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_L1_COMB_combo_mult2.ox SHAPES_finger_L1_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_L1_COMB_combo_mult3.ox SHAPES_finger_L1_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_L1_COMB_combo_mult.ox arms_geo_blendShape.finger_L1_COMB;
+
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R1_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_R1_COMB_combo -m -im 0 SHAPES_finger_R1_COMB_combo_mult;
+setAttr SHAPES_finger_R1_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R1_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_R1_COMB_combo SHAPES_finger_R1_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_R1_2 SHAPES_finger_R1_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_R1_COMB_combo_mult1.SHAPES_finger_R1_COMB_combo SHAPES_finger_R1_COMB_combo_mult.SHAPES_finger_R1_COMB_combo;
+setAttr SHAPES_finger_R1_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R1_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_R1_COMB_combo SHAPES_finger_R1_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_R1_1 SHAPES_finger_R1_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_R1_COMB_combo_mult2.SHAPES_finger_R1_COMB_combo SHAPES_finger_R1_COMB_combo_mult.SHAPES_finger_R1_COMB_combo;
+setAttr SHAPES_finger_R1_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_R1_COMB_combo_mult1.ox SHAPES_finger_R1_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R1_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_R1_COMB_combo SHAPES_finger_R1_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_R1_0 SHAPES_finger_R1_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_R1_COMB_combo_mult3.SHAPES_finger_R1_COMB_combo SHAPES_finger_R1_COMB_combo_mult.SHAPES_finger_R1_COMB_combo;
+setAttr SHAPES_finger_R1_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_R1_COMB_combo_mult2.ox SHAPES_finger_R1_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_R1_COMB_combo_mult3.ox SHAPES_finger_R1_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_R1_COMB_combo_mult.ox arms_geo_blendShape.finger_R1_COMB;
+
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L2_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_L2_COMB_combo -m -im 0 SHAPES_finger_L2_COMB_combo_mult;
+setAttr SHAPES_finger_L2_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L2_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_L2_COMB_combo SHAPES_finger_L2_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_L2_2 SHAPES_finger_L2_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_L2_COMB_combo_mult1.SHAPES_finger_L2_COMB_combo SHAPES_finger_L2_COMB_combo_mult.SHAPES_finger_L2_COMB_combo;
+setAttr SHAPES_finger_L2_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L2_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_L2_COMB_combo SHAPES_finger_L2_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_L2_1 SHAPES_finger_L2_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_L2_COMB_combo_mult2.SHAPES_finger_L2_COMB_combo SHAPES_finger_L2_COMB_combo_mult.SHAPES_finger_L2_COMB_combo;
+setAttr SHAPES_finger_L2_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_L2_COMB_combo_mult1.ox SHAPES_finger_L2_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L2_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_L2_COMB_combo SHAPES_finger_L2_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_L2_0 SHAPES_finger_L2_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_L2_COMB_combo_mult3.SHAPES_finger_L2_COMB_combo SHAPES_finger_L2_COMB_combo_mult.SHAPES_finger_L2_COMB_combo;
+setAttr SHAPES_finger_L2_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_L2_COMB_combo_mult2.ox SHAPES_finger_L2_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_L2_COMB_combo_mult3.ox SHAPES_finger_L2_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_L2_COMB_combo_mult.ox arms_geo_blendShape.finger_L2_COMB;
+
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R2_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_R2_COMB_combo -m -im 0 SHAPES_finger_R2_COMB_combo_mult;
+setAttr SHAPES_finger_R2_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R2_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_R2_COMB_combo SHAPES_finger_R2_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_R2_2 SHAPES_finger_R2_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_R2_COMB_combo_mult1.SHAPES_finger_R2_COMB_combo SHAPES_finger_R2_COMB_combo_mult.SHAPES_finger_R2_COMB_combo;
+setAttr SHAPES_finger_R2_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R2_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_R2_COMB_combo SHAPES_finger_R2_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_R2_1 SHAPES_finger_R2_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_R2_COMB_combo_mult2.SHAPES_finger_R2_COMB_combo SHAPES_finger_R2_COMB_combo_mult.SHAPES_finger_R2_COMB_combo;
+setAttr SHAPES_finger_R2_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_R2_COMB_combo_mult1.ox SHAPES_finger_R2_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R2_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_R2_COMB_combo SHAPES_finger_R2_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_R2_0 SHAPES_finger_R2_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_R2_COMB_combo_mult3.SHAPES_finger_R2_COMB_combo SHAPES_finger_R2_COMB_combo_mult.SHAPES_finger_R2_COMB_combo;
+setAttr SHAPES_finger_R2_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_R2_COMB_combo_mult2.ox SHAPES_finger_R2_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_R2_COMB_combo_mult3.ox SHAPES_finger_R2_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_R2_COMB_combo_mult.ox arms_geo_blendShape.finger_R2_COMB;
+
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L3_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_L3_COMB_combo -m -im 0 SHAPES_finger_L3_COMB_combo_mult;
+setAttr SHAPES_finger_L3_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L3_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_L3_COMB_combo SHAPES_finger_L3_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_L3_2 SHAPES_finger_L3_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_L3_COMB_combo_mult1.SHAPES_finger_L3_COMB_combo SHAPES_finger_L3_COMB_combo_mult.SHAPES_finger_L3_COMB_combo;
+setAttr SHAPES_finger_L3_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L3_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_L3_COMB_combo SHAPES_finger_L3_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_L3_1 SHAPES_finger_L3_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_L3_COMB_combo_mult2.SHAPES_finger_L3_COMB_combo SHAPES_finger_L3_COMB_combo_mult.SHAPES_finger_L3_COMB_combo;
+setAttr SHAPES_finger_L3_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_L3_COMB_combo_mult1.ox SHAPES_finger_L3_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_L3_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_L3_COMB_combo SHAPES_finger_L3_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_L3_0 SHAPES_finger_L3_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_L3_COMB_combo_mult3.SHAPES_finger_L3_COMB_combo SHAPES_finger_L3_COMB_combo_mult.SHAPES_finger_L3_COMB_combo;
+setAttr SHAPES_finger_L3_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_L3_COMB_combo_mult2.ox SHAPES_finger_L3_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_L3_COMB_combo_mult3.ox SHAPES_finger_L3_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_L3_COMB_combo_mult.ox arms_geo_blendShape.finger_L3_COMB;
+
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R3_COMB_combo_mult;
+addAttr -at message -ln SHAPES_finger_R3_COMB_combo -m -im 0 SHAPES_finger_R3_COMB_combo_mult;
+setAttr SHAPES_finger_R3_COMB_combo_mult.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R3_COMB_combo_mult1;
+addAttr -at message -ln SHAPES_finger_R3_COMB_combo SHAPES_finger_R3_COMB_combo_mult1;
+connectAttr arms_geo_blendShape.finger_R3_2 SHAPES_finger_R3_COMB_combo_mult1.i1x;
+connectAttr -f -na SHAPES_finger_R3_COMB_combo_mult1.SHAPES_finger_R3_COMB_combo SHAPES_finger_R3_COMB_combo_mult.SHAPES_finger_R3_COMB_combo;
+setAttr SHAPES_finger_R3_COMB_combo_mult1.i2x 1;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R3_COMB_combo_mult2;
+addAttr -at message -ln SHAPES_finger_R3_COMB_combo SHAPES_finger_R3_COMB_combo_mult2;
+connectAttr arms_geo_blendShape.finger_R3_1 SHAPES_finger_R3_COMB_combo_mult2.i1x;
+connectAttr -f -na SHAPES_finger_R3_COMB_combo_mult2.SHAPES_finger_R3_COMB_combo SHAPES_finger_R3_COMB_combo_mult.SHAPES_finger_R3_COMB_combo;
+setAttr SHAPES_finger_R3_COMB_combo_mult2.i2x 1;
+connectAttr SHAPES_finger_R3_COMB_combo_mult1.ox SHAPES_finger_R3_COMB_combo_mult2.i2x;
+shadingNode -au multiplyDivide -n SHAPES_temp_multiplyDivide;
+rename SHAPES_temp_multiplyDivide SHAPES_finger_R3_COMB_combo_mult3;
+addAttr -at message -ln SHAPES_finger_R3_COMB_combo SHAPES_finger_R3_COMB_combo_mult3;
+connectAttr arms_geo_blendShape.finger_R3_0 SHAPES_finger_R3_COMB_combo_mult3.i1x;
+connectAttr -f -na SHAPES_finger_R3_COMB_combo_mult3.SHAPES_finger_R3_COMB_combo SHAPES_finger_R3_COMB_combo_mult.SHAPES_finger_R3_COMB_combo;
+setAttr SHAPES_finger_R3_COMB_combo_mult3.i2x 1;
+connectAttr SHAPES_finger_R3_COMB_combo_mult2.ox SHAPES_finger_R3_COMB_combo_mult3.i2x;
+connectAttr SHAPES_finger_R3_COMB_combo_mult3.ox SHAPES_finger_R3_COMB_combo_mult.i1x;
+connectAttr -f SHAPES_finger_R3_COMB_combo_mult.ox arms_geo_blendShape.finger_R3_COMB;
+
+
+// apply the weight maps
+SHAPESImportBlendShapeSetup arms_geo_blendShape;
+
+select -cl;
+}
+print "// Finished re-building the blend shape node. //\n";
